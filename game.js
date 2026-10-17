@@ -278,10 +278,11 @@ const SPAWN_Y = 280;
 const STRING = { min: 180, base: 400, max: 470, reel: 240, payout: 70 };
 // The wind pushes a kite with a fixed force (times the wind strength); the stick only redirects it,
 // so no amount of steering beats gravity in a calm. Lean tilts that force toward the valley centre.
-const KITE = { radius: 25, drag: 2.4, aero: 800, climb: 0.6, lean: 0.25, slackAero: 0.75, gravity: 460, gust: 150 };
+const KITE = { radius: 25, drag: 2.4, aero: 1020, climb: 0.6, lean: 0.25, slackAero: 0.85, gravity: 680, gust: 150 };
 const TAUT_SLACK = 4;
-// JALAR: a burst along the stick plus a tug upward on the line.
-const DASH = { burst: 240, lift: 40, cooldown: 1.3 };
+// JALAR: a burst along the stick plus a tug that always lifts: an upward kick, then `tug` seconds in which
+// the kite flies on full lift as if the wind blew at least `tugWind` (a taut line can't climb past its end).
+const DASH = { burst: 200, lift: 400, tug: 0.15, tugWind: 1, cooldown: 1.3 };
 const STUN = 0.6;
 const IDLE_INPUT = { ax: 0, ay: 0, dash: false, reel: false };
 // The last segments (from bladeFrom on) carry the hojilla that cuts.
@@ -317,6 +318,7 @@ const createKite = (player) => {
     len: anchor.y - SPAWN_Y,
     taut: true,
     dashCooldown: 0,
+    tug: 0,
     stun: 0,
     fray: 0,
     free: false,
@@ -342,7 +344,9 @@ const aeroDirection = (kite, { ax, ay }, lean) => {
 /** A taut line turns the wind into a full push; a slack or cut kite catches only part of it. */
 const accelerate = (kite, input, weather, dt) => {
   const [dx, dy] = aeroDirection(kite, input, weather.lean);
-  const push = KITE.aero * weather.wind * (kite.taut && !kite.free ? 1 : KITE.slackAero);
+  const tugging = kite.tug > 0;
+  const wind = tugging ? Math.max(weather.wind, DASH.tugWind) : weather.wind;
+  const push = KITE.aero * wind * ((kite.taut || tugging) && !kite.free ? 1 : KITE.slackAero);
   kite.vx += (dx * push + weather.gust) * dt;
   kite.vy += (dy * push + KITE.gravity) * dt;
 };
@@ -352,6 +356,7 @@ const dash = (kite, { ax, ay }) => {
   const [sx, sy] = unit(ax, ay);
   kite.vx += sx * DASH.burst;
   kite.vy += sy * DASH.burst - DASH.lift;
+  kite.tug = DASH.tug;
   kite.dashCooldown = DASH.cooldown;
 };
 
@@ -422,6 +427,7 @@ const flyKite = (kite, input, weather, dt) => {
 /** Advances one kite by dt; a stuck kite (caught in the wires or on a roof) only sways its tail. */
 const stepKite = (kite, input, weather, dt) => {
   kite.dashCooldown = Math.max(0, kite.dashCooldown - dt);
+  kite.tug = Math.max(0, kite.tug - dt);
   kite.stun = Math.max(0, kite.stun - dt);
   if (!kite.stuck) flyKite(kite, input, weather, dt);
   stepTail(kite, weather, dt);
@@ -458,9 +464,9 @@ const ZAMURO = { radius: 20, speed: 110, band: [140, 380], every: [5, 9], margin
 const CLASH = { bounce: 260, grace: 0.35 };
 const ROUND = { countdown: 1.8, verdict: 1.2, slowmo: 0.3, ventarron: 20, wins: 3 };
 // Wind strength swings through a slow cycle of gusts and calms; lead is how early the cue warns.
-const WIND = { cycle: TAU / 10, flutter: 0.12, flutterRate: 1.7, gustRate: 0.45, lull: 0.55, rafaga: 1.45, lead: 1.2, opening: 0.3 };
+const WIND = { cycle: TAU / 10, flutter: 0.12, flutterRate: 1.7, gustRate: 0.45, lull: 0.55, rafaga: 1.45, lead: 1.5, opening: 0.3 };
 const WEATHER = {
-  calm: { wind: 1, swing: 0.85, lean: 1, gust: 1, reach: STRING.base },
+  calm: { wind: 1, swing: 0.96, lean: 1, gust: 1, reach: STRING.base },
   ventarron: { wind: 1.3, swing: 0.6, lean: 2, gust: 1.8, reach: STRING.max },
 };
 
@@ -661,10 +667,10 @@ const stepDuel = (duel, inputs, dt) => PHASES[duel.phase](duel, inputs, dt);
 // pace: share of frames it pushes the stick outside a climb (a slow kite rarely saws fast enough to cut).
 const RIVALS = [
   // A careful beginner: climbs out of calms in time, but dawdles and hovers instead of sawing.
-  { name: 'EL CHAMO', barrio: 'Catia', motto: 'Apenas está aprendiendo', reaction: 0.75, aim: 100, dashRange: 0, guard: 0, nerve: 390, foresight: 0.7, aggression: 0.6, stroke: 0, pace: 0.37 },
-  { name: 'LA FLACA', barrio: 'Petare', motto: 'Rápida y mañosa', reaction: 0.38, aim: 40, dashRange: 70, guard: 0.3, nerve: 420, foresight: 0.4, aggression: 0.8, stroke: 50, pace: 1 },
-  { name: 'EL CATIRE', barrio: 'La Pastora', motto: 'Nunca suelta el hilo', reaction: 0.27, aim: 34, dashRange: 90, guard: 0.45, nerve: 400, foresight: 0.6, aggression: 0.85, stroke: 50, pace: 1 },
-  { name: 'DON GOYO', barrio: 'El Valle', motto: 'Cuarenta años cortando papagayos', reaction: 0.15, aim: 12, dashRange: 110, guard: 0.8, nerve: 380, foresight: 0.9, aggression: 1, stroke: 50, pace: 1 },
+  { name: 'EL CHAMO', barrio: 'Catia', motto: 'Apenas está aprendiendo', reaction: 0.75, aim: 100, dashRange: 0, guard: 0, nerve: 390, foresight: 0.7, aggression: 0.6, stroke: 0, pace: 0.45 },
+  { name: 'LA FLACA', barrio: 'Petare', motto: 'Rápida y mañosa', reaction: 0.38, aim: 56, dashRange: 70, guard: 0.3, nerve: 420, foresight: 0.2, aggression: 0.8, stroke: 50, pace: 1 },
+  { name: 'EL CATIRE', barrio: 'La Pastora', motto: 'Nunca suelta el hilo', reaction: 0.27, aim: 34, dashRange: 90, guard: 0.45, nerve: 400, foresight: 0.6, aggression: 0.8, stroke: 50, pace: 1 },
+  { name: 'DON GOYO', barrio: 'El Valle', motto: 'Cuarenta años cortando papagayos', reaction: 0.15, aim: 15, dashRange: 110, guard: 0.8, nerve: 380, foresight: 0.9, aggression: 0.97, stroke: 50, pace: 1 },
 ];
 // strikeAlong: where on the rival string to aim, as a fraction from its kite toward its anchor.
 const CPU = { strikeAlong: 0.25, floor: 390, threat: 90, deadzone: 10 };
@@ -1845,6 +1851,11 @@ class Sfx {
     this.tone(70, 'sine', { from: 300, gain: 0.5, duration: 0.35 });
   }
 
+  /** Dull click for a JALAR pressed while it recharges. */
+  refuse() {
+    this.tone(160, 'square', { from: 900, gain: 0.12, duration: 0.07 });
+  }
+
   clink() {
     this.tone(1800, 'triangle', { gain: 0.2, duration: 0.12 });
   }
@@ -1877,6 +1888,7 @@ const HUD = { margin: 24, nameY: 24, pipY: 56, pipGap: 32, meterY: 80, meterW: 1
 const FLAG = { x: W / 2, y: 14, length: 58, stripe: 6, droop: 18, points: 7 };
 const FLAG_COLORS = [0xffcc00, 0x00247d, 0xcf142b];
 const CUES = {
+  viene: { text: '¡SE VIENE LA CALMA!', color: COLORS.dim },
   calma: { text: '¡CALMA! · JALA PARA SUBIR', color: COLORS.cream },
   rafaga: { text: '¡RÁFAGA!', color: COLORS.sun },
 };
@@ -1887,6 +1899,7 @@ const VERDICTS = {
   draw: ['¡EMPATE!', 'LOS DOS AL SUELO'],
 };
 const GO_SHOWN = 0.7;
+const REFUSE_S = 0.3;
 const COUNTDOWN_STEPS = 3;
 // Camera choreography for points: hitstop is applied by the duel loop.
 const SHOT = { zoom: 1.08, zoomMs: 260, shakeMs: 280, shake: 0.006, resetMs: 500, hitstop: 0.08 };
@@ -1945,11 +1958,14 @@ class Hud {
     this.cue = label(scene, W / 2, 130, '', { size: 22 });
     scene.tweens.add({ targets: [this.storm, this.cue], scale: 1.08, duration: 300, yoyo: true, repeat: -1 });
     this.shown = null;
+    this.refusedAt = [-REFUSE_S, -REFUSE_S];
+    this.clock = 0;
     this.left = left;
     this.objects = [this.g, ...tags, ...this.meters, this.banner, this.detail, this.storm, this.cue];
   }
 
   update(duel, drift, clock) {
+    this.clock = clock;
     const g = this.g.clear();
     drawFlag(g, drift, clock);
     duel.kites.forEach((kite) => this.drawPlayer(g, kite, duel.score[kite.player], clock));
@@ -1958,20 +1974,28 @@ class Hud {
     // Wind cues wait until the banner is gone so the two never overlap.
     const flying = duel.phase === 'fly' && !banner[0];
     this.storm.setVisible(duel.ventarron && flying);
-    const cue = flying && CUES[windCue(duel)];
+    // JALA PARA SUBIR only once the calm has really started, when a JALAR visibly lifts the kite.
+    const coming = windCue(duel) === 'calma' && weatherAt(duel).wind >= WIND.lull;
+    const cue = flying && CUES[coming ? 'viene' : windCue(duel)];
     this.cue.setVisible(Boolean(cue));
     if (cue) this.cue.setText(cue.text).setColor(css(cue.color));
   }
 
+  /** JALAR pressed while recharging: the meter shakes and flashes red. */
+  refuse(player) {
+    this.refusedAt[player] = this.clock;
+  }
+
   drawPlayer(g, kite, points, clock) {
-    const left = this.left(kite.player);
+    const refused = Math.max(0, REFUSE_S - (clock - this.refusedAt[kite.player]));
+    const left = this.left(kite.player) + Math.sin(clock * 90) * refused * 20;
     for (let pip = 0; pip < ROUND.wins; pip += 1) {
       drawPapagayo(g, left + 12 + pip * HUD.pipGap, HUD.pipY, 0, 0.38, KITE_COLORS[kite.player], pip < points);
     }
     const charge = 1 - kite.dashCooldown / DASH.cooldown;
     const ready = charge === 1;
     g.fillStyle(ART.ink, 0.75).fillRoundedRect(left - 2, HUD.meterY - 2, HUD.meterW + 4, HUD.meterH + 4, 5);
-    g.fillStyle(ready ? COLORS.players[kite.player] : COLORS.dim, ready ? 0.75 + 0.25 * Math.sin(clock * 8) : 0.6);
+    g.fillStyle(refused ? COLORS.danger : ready ? COLORS.players[kite.player] : COLORS.dim, ready ? 0.75 + 0.25 * Math.sin(clock * 8) : 0.6);
     g.fillRoundedRect(left, HUD.meterY, Math.max(HUD.meterH, HUD.meterW * charge), HUD.meterH, 4);
     this.meters[kite.player].setAlpha(ready ? 1 : 0.6);
   }
@@ -2083,6 +2107,10 @@ class DuelView {
   react(event, duel) {
     const reactions = {
       go: () => this.audio.go(),
+      refused: () => {
+        if (this.hud) this.hud.refuse(event.player);
+        this.audio.refuse();
+      },
       dash: () => {
         this.flyers[event.player].dash();
         this.audio.whoosh();
@@ -2329,6 +2357,9 @@ class DuelLoop {
   tick() {
     const inputs = this.pilots.map((pilot) => pilot.input(this.duel, this.pressed));
     this.pressed.clear();
+    inputs.forEach(({ dash }, player) => {
+      if (dash && this.duel.phase === 'fly' && this.duel.kites[player].dashCooldown > DT) this.view.react({ type: 'refused', player });
+    });
     for (const event of stepDuel(this.duel, inputs, DT)) {
       this.view.react(event, this.duel);
       if (event.cause === 'cut') this.hitstop = SHOT.hitstop;
