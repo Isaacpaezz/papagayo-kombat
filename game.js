@@ -268,7 +268,7 @@ const ANCHORS = [
   { x: 640, y: 520 },
 ];
 const SPAWN_Y = 280;
-const STRING = { min: 180, base: 400, max: 470, reel: 240, payout: 70 };
+const STRING = { min: 180, base: 400, reel: 240, payout: 70 };
 // The wind pushes a kite with a fixed force (times the wind strength); the stick only redirects it,
 // so no amount of steering beats gravity in a calm. Lean tilts that force toward the valley centre.
 const KITE = { radius: 25, drag: 2.4, aero: 1020, climb: 0.6, lean: 0.25, slackAero: 0.85, gravity: 680, gust: 150 };
@@ -319,32 +319,35 @@ const createKite = (player) => {
     holding: false,
     stun: 0,
     fray: 0,
-    free: false,
-    stuck: false,
+    respawn: 0,
+    guard: 0,
+    vidrio: 0,
+    turbo: 0,
+    nylon: false,
   };
   hangTail(kite);
   return kite;
 };
 
-/** Holding RECOGER reels the line in; otherwise it pays out with the wind up to the current reach. */
-const reelLine = (kite, reel, reach, dt) => {
+/** Holding RECOGER reels the line in; otherwise it pays out with the wind up to its usual length. */
+const reelLine = (kite, reel, dt) => {
   if (reel) kite.len = max(STRING.min, kite.len - STRING.reel * dt);
-  else if (kite.len < reach) kite.len = min(reach, kite.len + STRING.payout * dt);
+  else if (kite.len < STRING.base) kite.len = min(STRING.base, kite.len + STRING.payout * dt);
 };
 
 /** Direction of the wind's push: up (leaning to the centre) bent by the stick. */
-const aeroDirection = (kite, { ax, ay }, lean) => {
+const aeroDirection = (kite, { ax, ay }) => {
   const [sx, sy] = unit(ax, ay);
   const inward = sign(W / 2 - kite.anchor.x);
-  return unit(sin(lean) * inward * KITE.climb + sx, -cos(lean) * KITE.climb + sy);
+  return unit(sin(KITE.lean) * inward * KITE.climb + sx, -cos(KITE.lean) * KITE.climb + sy);
 };
 
-/** A taut line turns the wind into a full push; a slack or cut kite catches only part of it. */
+/** A taut line turns the wind into a full push, a slack one only part of it; TURBO pushes harder still. */
 const accelerate = (kite, input, weather, dt) => {
-  const [dx, dy] = aeroDirection(kite, input, weather.lean);
+  const [dx, dy] = aeroDirection(kite, input);
   const boost = kite.tug > 0 ? DASH.tugWind : kite.holding ? AIR.wind : 0;
   const wind = max(weather.wind, boost);
-  const push = KITE.aero * wind * ((kite.taut || boost > 0) && !kite.free ? 1 : KITE.slackAero);
+  const push = KITE.aero * wind * (kite.taut || boost > 0 ? 1 : KITE.slackAero) * (kite.turbo ? POWER.push : 1);
   kite.vx += (dx * push + weather.gust) * dt;
   kite.vy += (dy * push + KITE.gravity) * dt;
 };
@@ -364,10 +367,11 @@ const canPull = (kite) => kite.air >= AIR.press;
 /** How a player who watches the meter holds B1: lets go when AIRE runs out, holds again once it allows a press. */
 const keepHolding = (wants, holding, kite) => wants && kite.air > 0 && (holding || canPull(kite));
 
-/** Holding B1 keeps the tug's lift on while AIRE lasts; released, the meter refills. */
+/** Holding B1 keeps the tug's lift on while AIRE lasts; released, the meter refills. TURBO keeps it full. */
 const holdLift = (kite, hold, dt) => {
   kite.holding = hold && kite.air > 0;
-  if (kite.holding) kite.air = max(0, kite.air - AIR.drain * dt);
+  if (kite.turbo) kite.air = 1;
+  else if (kite.holding) kite.air = max(0, kite.air - AIR.drain * dt);
   else if (!hold) kite.air = min(1, kite.air + AIR.refill * dt);
 };
 
@@ -422,8 +426,8 @@ const stepTail = (kite, weather, dt) => {
 
 /** Moves a flying kite one step; returns whether a JALAR press fired. */
 const flyKite = (kite, input, weather, dt) => {
-  const control = kite.stun > 0 || kite.free ? IDLE_INPUT : input;
-  if (!kite.free) reelLine(kite, control.reel, weather.reach, dt);
+  const control = kite.stun > 0 ? IDLE_INPUT : input;
+  reelLine(kite, control.reel, dt);
   const pulled = control.dash && canPull(kite);
   if (pulled) dash(kite, control);
   holdLift(kite, control.hold, dt);
@@ -433,22 +437,34 @@ const flyKite = (kite, input, weather, dt) => {
   kite.vy *= damping;
   kite.x += kite.vx * dt;
   kite.y += kite.vy * dt;
-  if (!kite.free) {
-    keepOnScreen(kite);
-    constrain(kite);
-  }
+  keepOnScreen(kite);
+  constrain(kite);
   return pulled;
 };
 
-/** Advances one kite by dt and returns whether JALAR fired; a stuck kite (caught in the wires or on a roof)
- * only sways its tail. */
+// Kite countdowns (seconds) that simply run out.
+const TIMERS = ['tug', 'stun', 'guard', 'vidrio', 'turbo'];
+
+/** A replacement kite rising from the kid's hands to the spawn height, out of the player's control; at the top
+ * it starts its guard (untouchable, blinking). */
+const rise = (kite, dt) => {
+  kite.respawn = max(0, kite.respawn - dt);
+  kite.y = lerp(SPAWN_Y, kite.anchor.y - RESPAWN.low, kite.respawn / RESPAWN.climb);
+  kite.len = kite.anchor.y - kite.y;
+  if (!kite.respawn) kite.guard = RESPAWN.guard;
+  return false;
+};
+
+/** Advances one kite by dt and returns whether JALAR fired. */
 const stepKite = (kite, input, weather, dt) => {
-  kite.tug = max(0, kite.tug - dt);
-  kite.stun = max(0, kite.stun - dt);
-  const pulled = !kite.stuck && flyKite(kite, input, weather, dt);
+  TIMERS.forEach((timer) => (kite[timer] = max(0, kite[timer] - dt)));
+  const pulled = kite.respawn > 0 ? rise(kite, dt) : flyKite(kite, input, weather, dt);
   stepTail(kite, weather, dt);
   return pulled;
 };
+
+/** Neither climbing back up nor blinking: it can be cut, crash and be stunned. */
+const vulnerable = (kite) => !kite.respawn && !kite.guard;
 
 /** Unit normal of a kite's string (anchor to kite). */
 const stringNormal = (kite) => unit(kite.anchor.y - kite.y, kite.x - kite.anchor.x);
@@ -461,7 +477,7 @@ const sweepSpeed = (point, rival) => {
 
 /** Fastest speed at which the blade of `kite` saws across the string of `rival`; 0 when it is not sawing. */
 const sawSpeed = (kite, rival) => {
-  if (rival.free) return 0;
+  if (kite.respawn || !vulnerable(rival)) return 0;
   const speeds = kite.tail.slice(TAIL.bladeFrom, TAIL.segments).map((point, i) => {
     const crosses = segmentsIntersect(point, kite.tail[TAIL.bladeFrom + i + 1], rival.anchor, rival);
     return crosses ? sweepSpeed(point, rival) : 0;
@@ -479,15 +495,23 @@ const POWER_LINE = { from: 230, to: 570, y: 462, sag: 16, half: 4 };
 const ROOF_Y = 530;
 const ZAMURO = { radius: 20, speed: 110, band: [140, 380], every: [5, 9], margin: 40 };
 const CLASH = { bounce: 260, grace: 0.35 };
-const ROUND = { countdown: 1.8, verdict: 1.2, slowmo: 0.3, ventarron: 20, wins: 3 };
+// One 3-2-1, then non-stop flying. TIEMPO lasts `time` s and its last `double` s count twice; VIDAS gives each
+// side `lives` kites. `hint` is how long the first calm keeps teaching the hold.
+const MATCH = { countdown: 1.8, time: 90, double: 10, lives: 3, hint: 20 };
+const RULES = ['tiempo', 'vidas'];
+// A lost kite is replaced at once: the new one rises from `low` px above the hands for `climb` s, then stays
+// untouchable (blinking) for `guard` s.
+const RESPAWN = { climb: 1.5, guard: 1.2, low: 40 };
 // Wind strength swings through a slow cycle of gusts and calms; lead is how early the cue warns.
 const WIND = { cycle: TAU / 10, flutter: 0.12, flutterRate: 1.7, gustRate: 0.45, lull: 0.55, rafaga: 1.45, lead: 1.5, opening: 0.3 };
 // How deep the lulls swing (the duel's `lull`): gentle against the first rival, full against the last.
-const LULLS = { ladder: [0.6, 0.66, 0.67, 0.68], versus: 0.64 };
-const WEATHER = {
-  calm: { wind: 1, lean: 1, gust: 1, reach: STRING.base },
-  ventarron: { wind: 1.3, swing: 0.6, lean: 2, gust: 1.8, reach: STRING.max },
-};
+const LULLS = { ladder: [0.56, 0.6, 0.63, 0.65, 0.67, 0.68], versus: 0.64 };
+// Power boxes: one every `every` s (at most `max` around), drifting `drift` × the gust, gone after `life` s.
+const POWERS = ['vidrio', 'turbo', 'nylon', 'zamuro'];
+const BOX = { every: [10, 14], max: 2, life: 12, radius: 18, x: [260, 540], band: [150, 340], drift: 0.4 };
+// VIDRIO and TURBO last that many seconds; TURBO pushes `push` × harder; the allied zamuro chases at `ally` px/s
+// for `allyLife` s and stuns for `stun` s.
+const POWER = { vidrio: 8, turbo: 5, push: 1.35, ally: 260, allyLife: 4, stun: 1 };
 
 const powerLineY = (x) => {
   const t = (x - POWER_LINE.from) / (POWER_LINE.to - POWER_LINE.from);
@@ -502,17 +526,12 @@ const crashCause = ({ x, y }) => {
   return null;
 };
 
-/** Weather at round time `at`: deterministic, so the screen can warn about what comes next. */
+/** Weather at match time `at`: deterministic, so the screen can warn about what comes next. */
 const weatherAt = (duel, at = duel.elapsed) => {
-  const storm = at >= ROUND.ventarron ? WEATHER.ventarron : WEATHER.calm;
-  const swing = storm.swing ?? duel.lull;
   const [cycle, flutter, side] = duel.windPhases;
-  const wind = storm.wind + swing * sin(at * WIND.cycle + cycle) + WIND.flutter * sin(at * WIND.flutterRate + flutter);
   return {
-    wind: max(0, wind),
-    gust: KITE.gust * storm.gust * sin(at * WIND.gustRate + side),
-    lean: KITE.lean * storm.lean,
-    reach: storm.reach,
+    wind: max(0, 1 + duel.lull * sin(at * WIND.cycle + cycle) + WIND.flutter * sin(at * WIND.flutterRate + flutter)),
+    gust: KITE.gust * sin(at * WIND.gustRate + side),
   };
 };
 
@@ -524,70 +543,131 @@ const windCue = (duel) => {
   return null;
 };
 
-// The cycle starts just below steady and rising, so every round opens with a few seconds of normal wind.
-const startRound = (duel) =>
-  assign(duel, {
-    phase: 'countdown',
-    clock: ROUND.countdown,
-    elapsed: 0,
-    ventarron: false,
-    grace: 0,
-    verdict: null,
-    kites: [createKite(0), createKite(1)],
-    zamuros: [],
-    nextZamuro: between(duel.rng, ZAMURO.every),
-    windPhases: [-duel.rng() * WIND.opening, duel.rng() * TAU, duel.rng() * TAU],
-  });
-
 const ladderLull = (level) => LULLS.ladder[level];
 
-const createDuel = (rng, lull = LULLS.versus) => startRound({ rng, lull, score: [0, 0], round: 0, winner: null });
+// The wind cycle starts just below steady and rising, so a match opens with a few seconds of normal wind.
+const createDuel = (rng, rules = 'tiempo', lull = LULLS.versus) => ({
+  rng,
+  rules,
+  lull,
+  phase: 'countdown',
+  clock: MATCH.countdown,
+  elapsed: 0,
+  grace: 0,
+  winner: null,
+  score: [0, 0],
+  lives: [MATCH.lives, MATCH.lives],
+  kites: [createKite(0), createKite(1)],
+  zamuros: [],
+  boxes: [],
+  nextZamuro: between(rng, ZAMURO.every),
+  nextBox: between(rng, BOX.every),
+  windPhases: [-rng() * WIND.opening, rng() * TAU, rng() * TAU],
+});
 
-const spawnZamuros = (duel, dt) => {
-  duel.nextZamuro -= dt;
-  if (duel.nextZamuro > 0) return;
+/** A fresh kite in the kid's hands, about to rise. */
+const respawnKite = (player) => {
+  const kite = assign(createKite(player), { respawn: RESPAWN.climb });
+  rise(kite, 0);
+  hangTail(kite);
+  return kite;
+};
+
+/** Counts a spawn timer down; true when it fires (and restarts it). */
+const due = (duel, timer, every, dt) => {
+  duel[timer] -= dt;
+  if (duel[timer] > 0) return false;
+  duel[timer] = between(duel.rng, every);
+  return true;
+};
+
+const spawn = (duel, dt) => {
   const { rng } = duel;
-  duel.nextZamuro = between(rng, ZAMURO.every);
-  const direction = rng() < 0.5 ? 1 : -1;
-  const x = direction > 0 ? -ZAMURO.margin : W + ZAMURO.margin;
-  duel.zamuros.push({ x, y: between(rng, ZAMURO.band), vx: direction * ZAMURO.speed, hit: [false, false] });
-};
-
-/** A zamuro stuns each kite it touches once; returns the stun events. */
-const stunKites = (duel) => {
-  const events = [];
-  for (const zamuro of duel.zamuros) {
-    duel.kites.forEach((kite, player) => {
-      if (zamuro.hit[player] || distance(zamuro, kite) > ZAMURO.radius + KITE.radius) return;
-      zamuro.hit[player] = true;
-      kite.stun = STUN;
-      events.push({ type: 'stun', player });
-    });
+  if (due(duel, 'nextZamuro', ZAMURO.every, dt)) {
+    const direction = rng() < 0.5 ? 1 : -1;
+    const x = direction > 0 ? -ZAMURO.margin : W + ZAMURO.margin;
+    duel.zamuros.push({ x, y: between(rng, ZAMURO.band), vx: direction * ZAMURO.speed, vy: 0, hit: [false, false] });
   }
-  return events;
+  if (due(duel, 'nextBox', BOX.every, dt) && duel.boxes.length < BOX.max) {
+    duel.boxes.push({ x: between(rng, BOX.x), y: between(rng, BOX.band), kind: POWERS[floor(rng() * POWERS.length)], life: BOX.life });
+  }
 };
 
-/** Moves kites and zamuros; returns a 'dash' event for every JALAR that fired. */
+/** Wild zamuros fly straight across; an allied one (with a `prey`) chases the rival kite until its life ends. */
+const flyZamuro = (duel, zamuro, dt) => {
+  if (zamuro.prey !== undefined) {
+    const prey = duel.kites[zamuro.prey];
+    [zamuro.vx, zamuro.vy] = unit(prey.x - zamuro.x, prey.y - zamuro.y).map((v) => v * POWER.ally);
+    zamuro.life -= dt;
+  }
+  zamuro.x += zamuro.vx * dt;
+  zamuro.y += zamuro.vy * dt;
+};
+
+/** Moves kites, zamuros and boxes; returns a 'dash' event for every JALAR that fired. */
 const advanceWorld = (duel, inputs, dt) => {
   const weather = weatherAt(duel);
   const events = [];
   duel.kites.forEach((kite, player) => {
     if (stepKite(kite, inputs[player], weather, dt)) events.push({ type: 'dash', player });
   });
-  duel.zamuros.forEach((zamuro) => {
-    zamuro.x += zamuro.vx * dt;
+  duel.zamuros.forEach((zamuro) => flyZamuro(duel, zamuro, dt));
+  duel.zamuros = duel.zamuros.filter(({ x, life = 1 }) => life > 0 && x > -ZAMURO.margin - 1 && x < W + ZAMURO.margin + 1);
+  duel.boxes.forEach((box) => {
+    box.x += weather.gust * BOX.drift * dt;
+    box.life -= dt;
   });
-  duel.zamuros = duel.zamuros.filter(({ x }) => x > -ZAMURO.margin - 1 && x < W + ZAMURO.margin + 1);
+  duel.boxes = duel.boxes.filter((box) => box.life > 0);
   return events;
 };
 
-/** Wears each string by the rival blade's travel across it, or lets it recover; returns which snapped. */
+/** A zamuro stuns each kite it may touch once (an ally only its prey, harder); returns the stun events. */
+const stunKites = (duel) => {
+  const events = [];
+  for (const zamuro of duel.zamuros) {
+    duel.kites.forEach((kite, player) => {
+      const ally = zamuro.prey !== undefined;
+      if (zamuro.hit[player] || (ally && zamuro.prey !== player) || !vulnerable(kite)) return;
+      if (distance(zamuro, kite) > ZAMURO.radius + KITE.radius) return;
+      zamuro.hit[player] = true;
+      kite.stun = ally ? POWER.stun : STUN;
+      if (ally) zamuro.life = 0;
+      events.push({ type: 'stun', player });
+    });
+  }
+  duel.zamuros = duel.zamuros.filter(({ life = 1 }) => life > 0);
+  return events;
+};
+
+/** What a box does to the kite (or, for the zamuro, the side) that caught it. */
+const empower = (duel, player, kind) => {
+  const kite = duel.kites[player];
+  if (kind === 'nylon') kite.nylon = true;
+  else if (kind === 'zamuro') duel.zamuros.push({ x: kite.anchor.x, y: ROOF_Y, vx: 0, vy: 0, hit: [false, false], prey: 1 - player, life: POWER.allyLife });
+  else kite[kind] = POWER[kind];
+};
+
+/** A flying kite that touches a box takes its power; returns the pickup events. */
+const collect = (duel) => {
+  const events = [];
+  duel.boxes = duel.boxes.filter((box) => {
+    const player = duel.kites.findIndex((kite) => !kite.respawn && distance(kite, box) < BOX.radius + KITE.radius);
+    if (player < 0) return true;
+    empower(duel, player, box.kind);
+    events.push({ type: 'power', player, kind: box.kind });
+    return false;
+  });
+  return events;
+};
+
+/** Wears each string by the rival blade's travel across it (VIDRIO snaps it at once), or lets it recover;
+ * returns which snapped. */
 const frayStrings = (duel, dt) => {
   const { kites } = duel;
-  const speeds = kites.map((kite, i) => (duel.grace > 0 ? 0 : sawSpeed(kite, kites[1 - i])));
   return kites.map((kite, i) => {
-    const speed = speeds[1 - i];
-    kite.fray = speed ? kite.fray + speed * dt : max(0, kite.fray - FRAY.recovery * dt);
+    const cutter = kites[1 - i];
+    const speed = duel.grace > 0 ? 0 : sawSpeed(cutter, kite);
+    kite.fray = speed ? (cutter.vidrio ? FRAY.toughness : kite.fray + speed * dt) : max(0, kite.fray - FRAY.recovery * dt);
     return kite.fray >= FRAY.toughness;
   });
 };
@@ -606,52 +686,63 @@ const clash = (duel) => {
   return { type: 'clash' };
 };
 
-const downKite = (kite, cause) => {
-  kite.free = cause === 'cut';
-  kite.stuck = !kite.free;
-};
-
+/** Scores a lost kite (twice in TIEMPO's last seconds) and replaces it; the event carries the lost kite. */
 const award = (duel, loser, cause) => {
-  const winner = loser === null ? null : 1 - loser;
-  if (winner !== null) duel.score[winner] += 1;
-  assign(duel, { phase: 'verdict', clock: ROUND.verdict, verdict: { cause, loser, winner } });
-  return { type: 'point', cause, loser, winner };
+  const winner = 1 - loser;
+  const value = duel.rules === 'tiempo' && duel.elapsed > MATCH.time - MATCH.double ? 2 : 1;
+  const kite = duel.kites[loser];
+  duel.score[winner] += value;
+  duel.lives[loser] -= 1;
+  duel.kites[loser] = respawnKite(loser);
+  return { type: 'point', cause, loser, winner, value, kite };
 };
 
-/** Checks cuts and crashes after a step; a double loss is a draw. */
+/** Checks shields, cuts and crashes after a step; a double crash is a draw that only replaces both kites. */
 const resolve = (duel, dt) => {
   const { kites } = duel;
   const snapped = frayStrings(duel, dt);
   if (snapped[0] && snapped[1]) return [clash(duel)];
-  const causes = kites.map((kite, i) => (snapped[i] ? 'cut' : crashCause(kite)));
+  const events = [];
+  kites.forEach((kite, player) => {
+    if (!snapped[player] || !kite.nylon) return;
+    assign(kite, { nylon: false, fray: 0 });
+    snapped[player] = false;
+    events.push({ type: 'shield', player });
+  });
+  const causes = kites.map((kite, i) => (snapped[i] ? 'cut' : vulnerable(kite) && crashCause(kite)));
   const losers = [0, 1].filter((player) => causes[player]);
-  if (!losers.length) return [];
-  losers.forEach((player) => downKite(kites[player], causes[player]));
-  const loser = losers.length === 1 ? losers[0] : null;
-  return [award(duel, loser, loser === null ? 'draw' : causes[loser])];
+  if (losers.length === 1) events.push(award(duel, losers[0], causes[losers[0]]));
+  if (losers.length === 2) {
+    duel.kites = [0, 1].map(respawnKite);
+    events.push({ type: 'point', cause: 'draw', loser: null, winner: null, value: 0 });
+  }
+  return events;
+};
+
+/** The match winner, or null while it goes on (VIDAS: whoever still has kites; TIEMPO: the leader at the end,
+ * or the first to score in sudden death). */
+const matchWinner = ({ rules, score, lives, elapsed }) => {
+  if (rules === 'vidas') {
+    const out = lives.findIndex((left) => left <= 0);
+    return out < 0 ? null : 1 - out;
+  }
+  if (elapsed < MATCH.time || score[0] === score[1]) return null;
+  return score[0] > score[1] ? 0 : 1;
 };
 
 const flyStep = (duel, inputs, dt) => {
+  const before = duel.elapsed;
   duel.elapsed += dt;
   duel.grace = max(0, duel.grace - dt);
-  spawnZamuros(duel, dt);
-  const events = [...advanceWorld(duel, inputs, dt), ...stunKites(duel)];
-  if (!duel.ventarron && duel.elapsed >= ROUND.ventarron) {
-    duel.ventarron = true;
-    events.push({ type: 'ventarron' });
-  }
-  return [...events, ...resolve(duel, dt)];
-};
-
-const endRound = (duel) => {
-  const winner = duel.score.findIndex((points) => points >= ROUND.wins);
-  if (winner >= 0) {
-    assign(duel, { phase: 'over', winner });
-    return [{ type: 'over', winner }];
-  }
-  duel.round += 1;
-  startRound(duel);
-  return [{ type: 'round' }];
+  spawn(duel, dt);
+  const events = [...advanceWorld(duel, inputs, dt), ...stunKites(duel), ...collect(duel), ...resolve(duel, dt)];
+  const reached = (mark) => duel.rules === 'tiempo' && before < mark && duel.elapsed >= mark;
+  if (reached(MATCH.time - MATCH.double)) events.push({ type: 'double' });
+  if (reached(MATCH.time) && duel.score[0] === duel.score[1]) events.push({ type: 'sudden' });
+  const winner = matchWinner(duel);
+  if (winner === null) return events;
+  assign(duel, { phase: 'over', winner });
+  return [...events, { type: 'over', winner }];
 };
 
 const PHASES = {
@@ -662,12 +753,6 @@ const PHASES = {
     return [{ type: 'go' }];
   },
   fly: flyStep,
-  /** The world keeps moving in slow motion while the verdict is shown. */
-  verdict(duel, inputs, dt) {
-    const events = advanceWorld(duel, inputs, dt * ROUND.slowmo);
-    duel.clock -= dt;
-    return duel.clock > 0 ? events : [...events, ...endRound(duel)];
-  },
   over: () => [],
 };
 
@@ -682,15 +767,18 @@ const stepDuel = (duel, inputs, dt) => PHASES[duel.phase](duel, inputs, dt);
 // the target to JALAR); guard (chance to retreat when a blade threatens its string); nerve (how low, y, it sinks
 // before climbing); foresight (chance to heed the CALMA warning instead of waiting for the calm itself);
 // aggression (chance to go sawing on each decision instead of holding high above its anchor); stroke (how far
-// past the rival string each saw stroke reaches); pace (share of frames it pushes the stick outside a climb).
-const RIVAL_STATS = ['reaction', 'aim', 'dashRange', 'guard', 'nerve', 'foresight', 'aggression', 'stroke', 'pace'];
-const rival = (name, barrio, motto, stats) => ({ name, barrio, motto, ...Object.fromEntries(RIVAL_STATS.map((key, i) => [key, stats[i]])) });
+// past the rival string each saw stroke reaches); pace (share of frames it pushes the stick outside a climb);
+// greed (chance to go after a power box when one is around).
+const RIVAL_STATS = ['reaction', 'aim', 'dashRange', 'guard', 'nerve', 'foresight', 'aggression', 'stroke', 'pace', 'greed'];
+const rival = (name, home, motto, stats) => ({ name, home, motto, ...Object.fromEntries(RIVAL_STATS.map((key, i) => [key, stats[i]])) });
+// The regional ladder, from a careful beginner from Catia to the old master of El Valle.
 const RIVALS = [
-  // A careful beginner: climbs out of calms in time, but dawdles and hovers instead of sawing.
-  rival('EL CHAMO', 'CATIA', 'APENAS ESTÁ APRENDIENDO', [0.75, 100, 0, 0, 390, 0.7, 0.6, 0, 0.6]),
-  rival('LA FLACA', 'PETARE', 'RÁPIDA Y MAÑOSA', [0.47, 56, 70, 0.3, 420, 0.27, 0.8, 50, 1]),
-  rival('EL CATIRE', 'LA PASTORA', 'NUNCA SUELTA EL HILO', [0.18, 16, 90, 0.45, 400, 0.2, 1, 75, 1]),
-  rival('DON GOYO', 'EL VALLE', 'CUARENTA AÑOS CORTANDO PAPAGAYOS', [0.12, 10, 110, 0.75, 380, 0, 1, 70, 1]),
+  rival('EL CHAMO', 'CATIA, CARACAS', '¡QUÉ LO QUÉ, PANA!', [0.75, 100, 0, 0, 410, 0.7, 0.6, 0, 0.45, 0.1]),
+  rival('LA GOCHA', 'MÉRIDA', '¡AY, QUÉ FRÍO, MIJO!', [0.6, 80, 40, 0.15, 405, 0.5, 0.7, 25, 0.6, 0.2]),
+  rival('EL GUARO', 'BARQUISIMETO', '¡GUARO, TE VOY A CORTAR!', [0.47, 56, 70, 0.3, 420, 0.27, 0.8, 50, 0.68, 0.3]),
+  rival('LA MARGARITEÑA', 'MARGARITA', '¡AY, VALE, QUÉ BRISA!', [0.3, 30, 80, 0.4, 410, 0.25, 0.9, 60, 0.76, 0.4]),
+  rival('EL MARACUCHO', 'MARACAIBO', '¡QUÉ MOLLEJA DE PAPAGAYO!', [0.18, 22, 90, 0.45, 400, 0.2, 1, 75, 0.74, 0.5]),
+  rival('DON GOYO', 'EL VALLE, CARACAS', 'CUARENTA AÑOS CORTANDO PAPAGAYOS', [0.12, 18, 110, 0.75, 420, 0, 1, 70, 0.74, 0.6]),
 ];
 // strikeAlong: where on the rival string to aim, as a fraction from its kite toward its anchor.
 const CPU = { strikeAlong: 0.25, floor: 390, threat: 90, deadzone: 10 };
@@ -733,7 +821,7 @@ const sinking = (cpu, duel, me) => {
   return calm || me.y > cpu.spec.nerve;
 };
 
-/** Re-plans after its reaction time: climb out of a calm, retreat when threatened, or saw. */
+/** Re-plans after its reaction time: climb out of a calm, retreat when threatened, chase a box, or saw. */
 const plan = (cpu, duel) => {
   const { spec, rng } = cpu;
   const me = duel.kites[cpu.player];
@@ -749,7 +837,9 @@ const plan = (cpu, duel) => {
   }
   cpu.reel = threatened(me, rival) && rng() < spec.guard;
   const attacks = !cpu.reel && rng() < spec.aggression;
-  const aim = attacks ? sawPoint(me, rival, spec.stroke) : retreatPoint(me);
+  const [box] = duel.boxes;
+  const greedy = !cpu.reel && box && rng() < spec.greed;
+  const aim = greedy ? box : attacks ? sawPoint(me, rival, spec.stroke) : retreatPoint(me);
   cpu.target = {
     x: aim.x + gaussian(rng) * spec.aim,
     y: min(CPU.floor, aim.y + gaussian(rng) * spec.aim),
@@ -783,9 +873,9 @@ const cpuInput = (cpu, duel, dt) => {
 // 8. Score, stats & ladder (pure)
 // ---------------------------------------------------------------------------
 
-// Solo points: a cut is worth more than a rival's crash; a quick point earns `quick` per second
-// under `quickWithin`; beating rival n pays `win` × n, plus `flawless` for a 3-0.
-const SCORE = { cut: 1000, crash: 400, quick: 25, quickWithin: 20, win: 2000, flawless: 1500 };
+// Solo points: a cut is worth more than a rival's crash (both doubled when the point is); beating rival n pays
+// `win` × n, plus `flawless` if the rival never scored.
+const SCORE = { cut: 1000, crash: 400, win: 2000, flawless: 1500 };
 
 const createStats = () => [0, 1].map(() => ({ cuts: 0, crashes: 0, dashes: 0 }));
 
@@ -797,12 +887,8 @@ const tally = (stats, { type, cause, winner, loser, player }) => {
   else stats[loser].crashes += 1;
 };
 
-/** Points the human (player 0) earns for a point won after `seconds` of flying. */
-const pointScore = ({ cause, winner }, seconds) => {
-  if (winner !== 0) return 0;
-  const quick = round(max(0, SCORE.quickWithin - seconds) * SCORE.quick);
-  return (cause === 'cut' ? SCORE.cut : SCORE.crash) + quick;
-};
+/** Points the human (player 0) earns for a point. */
+const pointScore = ({ cause, winner, value }) => (winner === 0 ? (cause === 'cut' ? SCORE.cut : SCORE.crash) * value : 0);
 
 const matchBonus = (winner, score, level) =>
   winner === 0 ? SCORE.win * (level + 1) + (score[1] === 0 ? SCORE.flawless : 0) : 0;
@@ -830,13 +916,13 @@ const shiftLetter = (letter, step) =>
 const SKINS = [0xf3cfa6, 0xd9a173, 0xa8693f, 0x6b4126];
 const SHIRTS = [0xffd23f, 0x3fd2ff, 0xe8432e, 0x2fbf71, 0xe83e9b, 0xf2f2f2];
 const HAIR_TONES = { dark: 0x2b1a12, blond: 0xf2c14e, white: 0xeeeae2 };
-// Bodies: 0 chamo, 1 chama, 2 señor (rival only). Hair styles are indices into HAIR_PAINTERS; the first
-// four belong to chamos, the next four to chamas, and the last two are rival-only.
+// Bodies: 0 chamo, 1 chama, 2 señor (rival only). Hair styles are indices into HAIR_PAINTERS; the first two
+// belong to chamos, the next two to chamas, and the rest are the rivals' own.
 const BODY_NAMES = ['CHAMO', 'CHAMA'];
-const HAIR_NAMES = ['CORTO', 'GORRA', 'RIZOS', 'CRESTA', 'COLA', 'MOÑO', 'TRENZAS', 'MELENA'];
+const HAIR_NAMES = ['CORTO', 'GORRA', 'COLA', 'MOÑO'];
 const HAIRS_BY_BODY = [
-  [0, 1, 2, 3],
-  [4, 5, 6, 7],
+  [0, 1],
+  [2, 3],
 ];
 // Kite designs: which of the six paper panels take the accent colour, and that accent. The other panels
 // keep the player's own colour, so the kite still matches the HUD.
@@ -852,7 +938,7 @@ const LOOK_ROWS = ['body', 'hair', 'skin', 'shirt', 'kite'];
 const ROW_SIZES = { body: BODY_NAMES.length, skin: SKINS.length, shirt: SHIRTS.length, kite: KITE_DESIGNS.length };
 const DEFAULT_CHOICES = [
   { body: 0, hair: 0, skin: 1, shirt: 0, kite: 0 },
-  { body: 1, hair: 4, skin: 2, shirt: 1, kite: 1 },
+  { body: 1, hair: 2, skin: 2, shirt: 1, kite: 1 },
 ];
 const AVATAR_KEY = 'papagayos/avatar/v1';
 
@@ -893,12 +979,14 @@ const look = (body, hair, skin, shirt, hairTone, scale, kite) => ({ body, hair, 
 const resolveLook = (choice, player) =>
   look(choice.body, choice.hair, SKINS[choice.skin], SHIRTS[choice.shirt], HAIR_TONES.dark, 1, kiteOf(PLAYER_COLORS[player], KITE_DESIGNS[choice.kite]));
 
-// The four barrio rivals, by ladder level: a boy, a slim girl, a blond teenager and an old master.
+// The six regional rivals, by ladder level (hair indices beyond the players' are the rivals' own).
 const RIVAL_LOOKS = [
   look(0, 1, SKINS[2], 0x2fbf71, HAIR_TONES.dark, 0.96, kiteOf(0x2fbf71, ['001001', 0xffffff])),
-  look(1, 4, SKINS[1], 0xff7ab6, HAIR_TONES.dark, 1, kiteOf(0xff7ab6, ['011011', 0x7a3fb5])),
-  look(0, 8, SKINS[0], 0x2f6fd6, HAIR_TONES.blond, 1.1, kiteOf(0x2f6fd6, ['000111', 0xffffff])),
-  look(2, 9, SKINS[2], 0xf2ead8, HAIR_TONES.white, 1.16, kiteOf(0xff8a1f, ['010101', 0x1c1c1c])),
+  look(1, 4, SKINS[0], 0x8a3a8a, HAIR_TONES.dark, 0.98, kiteOf(0xe8432e, ['011011', 0x2b3a8f])),
+  look(0, 5, SKINS[1], 0xd8323c, HAIR_TONES.dark, 1.04, kiteOf(0xd8323c, ['000111', 0xffd23f])),
+  look(1, 6, SKINS[2], 0x2ec4b6, HAIR_TONES.dark, 1, kiteOf(0x2ec4b6, ['010101', 0xffffff])),
+  look(0, 7, SKINS[1], 0x2f6fd6, HAIR_TONES.dark, 1.12, kiteOf(0x2f6fd6, ['001001', 0xffd23f])),
+  look(2, 8, SKINS[2], 0xf2ead8, HAIR_TONES.white, 1.16, kiteOf(0xff8a1f, ['010101', 0x1c1c1c])),
 ];
 
 /**
@@ -924,20 +1012,12 @@ const WIRE = 0x150c13;
 const HAZE = 0x7a3a5a;
 const ZAMURO_INK = 0x17111a;
 const ZAMURO_TIP = 0xcfc6bd;
-const WINDOW_COLORS = [0xffd27a, 0xffe6a8, 0xfff2d6, 0x9fd0ff];
+const WINDOW_LIT = 0xffd27a;
 // Faded street paper, never as saturated as the tail bows.
 const PAPELITOS = [0xc79a8c, 0x93a7b3, 0xd3c29a, 0xae96ab];
 
-// Sky stops (top to horizon) for golden hour, dusk and the first night: the match walks through them.
-const SKIES = [
-  [0x2b1640, 0x7a2f5b, 0xe2683c, 0xffb347],
-  [0x1c1238, 0x4a1f5c, 0xa63a55, 0xef7b45],
-  [0x060a1d, 0x111a3c, 0x2b2453, 0x683453],
-];
-// Night falls on the fifth round; ease is how fast the light follows a new round (1/s).
-const DAY = { rounds: 4, ease: 0.7 };
-const NIGHT_TINT = 0x5a5f9a;
-const CLOUD_NIGHT = 0x6a72a6;
+// Sky stops from the top down to the horizon: a fixed Caracas sunset.
+const SKY = [0x2b1640, 0x7a2f5b, 0xe2683c, 0xffb347];
 // Visible breeze (px/s): papelitos race in a gust, drift and sink in a calm.
 const BREEZE = { speed: 120, gust: 0.6, sink: 60 };
 const SAG = { taut: 3, slack: 0.6, max: 90 };
@@ -951,16 +1031,7 @@ const mixColor = (from, to, t) => {
   return channel(16) | channel(8) | channel(0);
 };
 
-/** Time of day of a round: 0 is golden hour, 1 the first night. */
-const dayPhase = (round) => min(1, round / DAY.rounds);
-
-/** Opacity of each baked sky, stacked in order so they crossfade golden → dusk → night. */
-const skyAlphas = (t) => SKIES.map((_, i) => clamp01(t * (SKIES.length - 1) - i + 1));
-
-/** City windows switch on in waves as night falls. */
-const lightsAlpha = (t, wave) => clamp01((t - 0.3 - wave * 0.18) / 0.2);
-
-/** How the wind looks (px/s) on papelitos, clothes, clouds and the flag. */
+/** How the wind looks (px/s) on the papelitos. */
 const windDrift = ({ wind, gust }) => ({ vx: wind * (BREEZE.speed + gust * BREEZE.gust), vy: BREEZE.sink * (1 - wind) });
 
 /** Belly of a string at its middle (px): nearly straight when taut, loose when slack. */
@@ -1008,11 +1079,6 @@ const stepFall = (fall, weather, dt) => {
   stepTail(fall, weather, dt);
 };
 
-/** Who is celebrating after a point: 'win', 'lose' or null. */
-const moodOf = (verdict, player) => {
-  if (!verdict || verdict.winner === null) return null;
-  return verdict.winner === player ? 'win' : 'lose';
-};
 
 // ---------------------------------------------------------------------------
 // 11. Pixel art: font and backdrop painters (baked once at screen resolution)
@@ -1117,7 +1183,7 @@ const gradientAt = (stops, t) => {
 
 const HORIZON = 236;
 const SKY_BANDS = 12;
-const SUN = { x: 150, rise: 240, set: 450, size: 48 };
+const SUN = { x: 150, y: 250, size: 48 };
 const SUN_RINGS = [
   [22, 0xff7a40, 0.18],
   [17, 0xffa050, 0.32],
@@ -1126,36 +1192,16 @@ const SUN_RINGS = [
 ];
 
 /** Flat sky bands from the top down to the horizon, each meeting the next in a checkerboard dither row. */
-const paintSky = (stops, stars) => (ctx, rng) => {
+const paintSky = (ctx) => {
   const band = HORIZON / SKY_BANDS;
   for (let i = 0; i < SKY_BANDS; i += 1) {
-    const color = gradientAt(stops, i / (SKY_BANDS - 1));
+    const color = gradientAt(SKY, i / (SKY_BANDS - 1));
     fill(ctx, color, 0, floor(i * band), PW, i === SKY_BANDS - 1 ? PH : ceil(band));
     for (let x = 0; x < PW; x += 2) fill(ctx, color, x, floor(i * band) - 1);
   }
-  for (let i = 0; i < stars; i += 1) fill(ctx, 0xffffff, rng() * PW, rng() * 150, 1, 1, 0.4 + rng() * 0.6);
 };
 
 const paintSun = (ctx) => SUN_RINGS.forEach(([r, color, alpha]) => disc(ctx, color, SUN.size / 2, SUN.size / 2, r, alpha));
-
-// Cloud banks: x range of puffs per cloud, rows in pixels, drawn three times so the layer tiles.
-const CLOUDS = [
-  { y: 0, height: 120, depth: 0.1, count: 5, top: 28, bottom: 70, size: 110, alpha: 0.7 },
-  { y: 180, height: 60, depth: 0.25, count: 4, top: 26, bottom: 40, size: 90, alpha: 0.55 },
-];
-const CLOUD_COLORS = [0xff9a6b, 0xffc2c9];
-
-/** Flat-bottomed cumulus: an orange-lit dome with a pink top dome offset upward. */
-const paintClouds = ({ count, top, bottom, size }) => (ctx, rng) => {
-  for (let i = 0; i < count; i += 1) {
-    const cx = rng() * PW;
-    const cy = between(rng, [top, bottom]);
-    const puffs = range(5, () => [cx + (rng() - 0.5) * size, floor(size * (0.08 + rng() * 0.1))]);
-    CLOUD_COLORS.forEach((color, lit) =>
-      [-PW, 0, PW].forEach((shift) => puffs.forEach(([x, r]) => disc(ctx, color, x + shift, cy - lit * 2, r - lit, 1, true))),
-    );
-  }
-};
 
 // El Ávila, far crest then the main crest with the Hotel Humboldt and the teleférico (pixels).
 const RIDGES = [
@@ -1206,32 +1252,28 @@ const paintRidge = ({ color, shade, rim, base, peak, centre, spread, rough, land
   paintCableCar(ctx, [foot, crest[foot] + 6], [summit - 6, crest[summit] - 4]);
 };
 
-// Ranchos are painted fronts with a darker roof line; windows may light up at night.
+// Ranchos are painted fronts with a darker roof line; some windows already glow at sunset.
 const RANCHOS = [0xc0603e, 0xd27d4e, 0xe8a85a, 0xd96a8a, 0x5aa0c8, 0x8bc06a, 0xe6d26a, 0xb07ac8];
 const RANCHO_ROOF = 0x5a3a4a;
 const CERROS = { reach: 175, rise: 78, foot: 246, ranchos: 230 };
 const LANDMARKS = { twins: [178, 192], twinTop: 150, tower: 246, towerTop: 140, color: 0x4a4066, brick: 0x9a4a3a, glass: 0x2a2440 };
-const LIGHT_WAVES = 3;
 const CITY_DEPTH = 0.09;
 
-/** A lit-or-not window registered for the night lights. */
-const pane = (ctx, windows, x, y, w = 1, h = 1) => {
-  fill(ctx, LANDMARKS.glass, x, y, w, h);
-  windows.push({ x, y, w, h });
-};
+/** A window: dark glass, or already lit by a fixed pattern. */
+const pane = (ctx, x, y, w = 1, h = 1) => fill(ctx, (x * 7 + y * 13) % 9 ? LANDMARKS.glass : WINDOW_LIT, x, y, w, h);
 
 /** Parque Central's twin towers: ribbed concrete shafts with stepped crowns. */
-const paintTwins = (ctx, windows) =>
+const paintTwins = (ctx) =>
   LANDMARKS.twins.forEach((x) => {
     const top = LANDMARKS.twinTop;
     fill(ctx, LANDMARKS.color, x, top, 10, PH);
     fill(ctx, LANDMARKS.color, x + 2, top - 3, 6, 3);
     fill(ctx, INK, x + 4, top - 9, 1, 6);
-    for (let y = top + 3; y < CERROS.foot; y += 3) for (let px = x + 1; px < x + 9; px += 2) pane(ctx, windows, px, y);
+    for (let y = top + 3; y < CERROS.foot; y += 3) for (let px = x + 1; px < x + 9; px += 2) pane(ctx, px, y);
   });
 
 /** The Torre de David: a tall unfinished tower with brick patches and its helipad roof. */
-const paintTorreDeDavid = (ctx, rng, windows) => {
+const paintTorreDeDavid = (ctx, rng) => {
   const x = LANDMARKS.tower;
   const top = LANDMARKS.towerTop;
   fill(ctx, LANDMARKS.color, x, top, 14, PH);
@@ -1239,24 +1281,24 @@ const paintTorreDeDavid = (ctx, rng, windows) => {
   for (let y = top + 3; y < CERROS.foot; y += 3) {
     for (let px = x + 1; px < x + 13; px += 2) {
       if (rng() < 0.3) fill(ctx, LANDMARKS.brick, px, y, 2, 2);
-      else pane(ctx, windows, px, y);
+      else pane(ctx, px, y);
     }
   }
 };
 
 /** Low houses on the valley floor between the cerros: tile roofs, no glass towers. */
-const paintValley = (ctx, rng, windows) => {
+const paintValley = (ctx, rng) => {
   for (let x = 0; x < WIDE; x += 6 + floor(rng() * 6)) {
     const height = 5 + floor(rng() * 9);
     const y = CERROS.foot - height;
     fill(ctx, mixColor(RANCHOS[floor(rng() * RANCHOS.length)], HAZE, 0.55), x, y, 9, height);
     fill(ctx, 0x8a3a2a, x - 1, y - 1, 11, 1);
-    pane(ctx, windows, x + 3, y + 2);
+    pane(ctx, x + 3, y + 2);
   }
 };
 
 /** A cerro on one edge of the valley, covered top to bottom in colourful ranchos. */
-const paintCerro = (ctx, rng, windows, side) => {
+const paintCerro = (ctx, rng, side) => {
   const edge = side ? WIDE : 0;
   const inward = side ? -1 : 1;
   const hill = (x) => CERROS.foot - CERROS.rise * max(0, 1 - abs(x - edge) / CERROS.reach) ** 1.3;
@@ -1269,21 +1311,17 @@ const paintCerro = (ctx, rng, windows, side) => {
     .forEach(({ x, y, w, h }) => {
       fill(ctx, RANCHOS[floor(rng() * RANCHOS.length)], x, y - h, w, h);
       fill(ctx, RANCHO_ROOF, x - 1, y - h - 1, w + 2, 1);
-      pane(ctx, windows, x + 1 + floor(rng() * (w - 2)), y - h + 2);
+      pane(ctx, x + 1 + floor(rng() * (w - 2)), y - h + 2);
     });
 };
 
 /** The mid-distance city: valley houses, the two landmark towers and the cerros of ranchos framing them. */
-const paintCity = (windows) => (ctx, rng) => {
-  paintValley(ctx, rng, windows);
-  paintTwins(ctx, windows);
-  paintTorreDeDavid(ctx, rng, windows);
-  [0, 1].forEach((side) => paintCerro(ctx, rng, windows, side));
+const paintCity = (ctx, rng) => {
+  paintValley(ctx, rng);
+  paintTwins(ctx);
+  paintTorreDeDavid(ctx, rng);
+  [0, 1].forEach((side) => paintCerro(ctx, rng, side));
 };
-
-/** One wave of windows (every `waves`-th pane) in warm light, blended additively at night. */
-const paintLights = (windows, wave, waves = LIGHT_WAVES) => (ctx) =>
-  windows.forEach((p, i) => i % waves === wave && fill(ctx, WINDOW_COLORS[i % WINDOW_COLORS.length], p.x, p.y, p.w, p.h));
 
 const POLE = { top: 223, bar: 27 };
 const CABLES = [-7, 0, 7];
@@ -1311,10 +1349,10 @@ const ROOFTOPS = [
 const TANK = { body: 0x2c5aa0, light: 0x5b8fd8, dark: 0x1d3d6e };
 
 /** A wall with rows of windows, as for every building in front of the cerros. */
-const paintBlock = (ctx, windows, x, y, w, color) => {
+const paintBlock = (ctx, x, y, w, color) => {
   fill(ctx, color, x, y, w, PH - y);
   fill(ctx, mixColor(color, CREAM, 0.3), x, y, w, 1);
-  for (let wy = y + 4; wy < PH - 3; wy += 7) for (let wx = x + 3; wx < x + w - 3; wx += 6) pane(ctx, windows, wx, wy, 3, 3);
+  for (let wy = y + 4; wy < PH - 3; wy += 7) for (let wx = x + 3; wx < x + w - 3; wx += 6) pane(ctx, wx, wy, 3, 3);
 };
 
 /** The blue water tank on legs that sits on every Caracas rooftop. */
@@ -1327,18 +1365,18 @@ const paintTank = (ctx, x, roof) => {
 };
 
 /** The two flyers' azoteas with their clutter, the blocks under the cables and frame blocks at the edges. */
-const paintAzoteas = (windows) => (ctx, rng) => {
+const paintAzoteas = (ctx, rng) => {
   const roof = ROOF_Y / PIXEL;
   const deck = DECK / PIXEL;
   for (let x = POWER_LINE.from / PIXEL; x < POWER_LINE.to / PIXEL - 15; x += 25 + floor(rng() * 5)) {
-    paintBlock(ctx, windows, x, 274 + rng() * 13, 23, 0x4a2a44);
+    paintBlock(ctx, x, 274 + rng() * 13, 23, 0x4a2a44);
   }
-  paintBlock(ctx, windows, -5, 226, 36, 0x3e2440);
-  paintBlock(ctx, windows, PW - 32, 231, 37, 0x3e2440);
+  paintBlock(ctx, -5, 226, 36, 0x3e2440);
+  paintBlock(ctx, PW - 32, 231, 37, 0x3e2440);
   ANCHORS.forEach(({ x: anchor }, player) => {
     const x = anchor / PIXEL;
     const { tank, antenna, dish, wall } = ROOFTOPS[player];
-    paintBlock(ctx, windows, x - AZOTEA.half, deck, AZOTEA.half * 2, wall);
+    paintBlock(ctx, x - AZOTEA.half, deck, AZOTEA.half * 2, wall);
     fill(ctx, mixColor(wall, CREAM, 0.15), x - AZOTEA.half - 2, roof - 2, AZOTEA.half * 2 + 4, deck - roof + 2);
     fill(ctx, CREAM, x - AZOTEA.half - 2, roof - 3, AZOTEA.half * 2 + 4, 1);
     fill(ctx, INK, x - AZOTEA.half - 2, deck - 1, AZOTEA.half * 2 + 4, 1);
@@ -1369,60 +1407,21 @@ const paintBloom = (ctx) => BLOOM.rings.forEach((r) => disc(ctx, 0xffffff, BLOOM
 /** Every camera shows the 800×600 world on the 400×300 canvas. */
 const pixelCamera = (camera) => camera.setZoom(1 / PIXEL).centerOn(W / 2, H / 2);
 
-/** Sky, sun, clouds, El Ávila, the city and wires; the light follows the time of day. */
+/** Sky, sun, El Ávila, the city and wires at sunset; the far layers slide a little with the action. */
 class Backdrop {
   constructor(scene) {
     pixelCamera(scene.cameras.main);
     loadFont(scene);
-    const image = (key) => scene.add.image(0, 0, key).setOrigin(0).setScale(PIXEL);
-    const layer = (key, depth) => {
-      const added = image(key);
-      this.parallax.push({ image: added, depth });
-      return added;
-    };
-    this.parallax = [];
-    this.clouds = [];
-    this.skies = SKIES.map((stops, i) => image(bake(scene, `sky-${i}`, PW, PH, paintSky(stops, i * 60))));
-    this.sun = scene.add.image(SUN.x, SUN.rise, bake(scene, 'sun', SUN.size, SUN.size, paintSun)).setScale(PIXEL).setBlendMode('ADD');
-    this.addClouds(scene, 0);
-    const ridge = (i) => layer(bake(scene, `ridge-${i}`, WIDE, PH, paintRidge(RIDGES[i])), RIDGES[i].depth);
-    this.tinted = [ridge(0), ridge(1)];
-    this.addClouds(scene, 1);
-    const windows = [];
-    this.tinted.push(layer(bake(scene, 'city', WIDE, PH, paintCity(windows)), CITY_DEPTH));
-    this.glowingWindows = Array.from({ length: LIGHT_WAVES }, (_, wave) =>
-      layer(bake(scene, `lights-${wave}`, WIDE, PH, paintLights(windows, wave)), CITY_DEPTH).setBlendMode('ADD'),
-    );
-    this.tinted.push(image(bake(scene, 'wires', PW, PH, paintWires)));
+    const image = (key, paint, width = PW) => scene.add.image(0, 0, bake(scene, key, width, PH, paint)).setOrigin(0).setScale(PIXEL);
+    image('sky', paintSky);
+    scene.add.image(SUN.x, SUN.y, bake(scene, 'sun', SUN.size, SUN.size, paintSun)).setScale(PIXEL).setBlendMode('ADD');
+    this.parallax = [...RIDGES.map((ridge, i) => [image(`ridge-${i}`, paintRidge(ridge), WIDE), ridge.depth]), [image('city', paintCity, WIDE), CITY_DEPTH]];
+    image('wires', paintWires);
+    this.addForeground = () => image('azoteas', paintAzoteas);
   }
 
-  addClouds(scene, i) {
-    const spec = CLOUDS[i];
-    const key = bake(scene, `clouds-${i}`, PW, spec.height, paintClouds(spec));
-    const sprite = scene.add.tileSprite(0, spec.y, W, spec.height * PIXEL, key).setOrigin(0).setTileScale(PIXEL);
-    this.clouds.push({ sprite, depth: spec.depth, alpha: spec.alpha });
-  }
-
-  /** The azoteas in front of the action (added after whatever must sit behind them). */
-  addForeground(scene) {
-    const windows = [];
-    const add = (key) => scene.add.image(0, 0, key).setOrigin(0).setScale(PIXEL);
-    this.tinted.push(add(bake(scene, 'azoteas', PW, PH, paintAzoteas(windows))));
-    this.glowingWindows.push(add(bake(scene, 'azotea-lights', PW, PH, paintLights(windows, 0, 1))).setBlendMode('ADD'));
-  }
-
-  update(day, drift, dt, focusX) {
-    const sunset = clamp01(day / 0.7);
-    skyAlphas(day).forEach((alpha, i) => this.skies[i].setAlpha(alpha));
-    this.sun.setY(lerp(SUN.rise, SUN.set, sunset)).setAlpha(1 - sunset * 0.5);
-    const tint = mixColor(0xffffff, NIGHT_TINT, day);
-    this.tinted.forEach((image) => image.setTint(tint));
-    this.glowingWindows.forEach((image, wave) => image.setAlpha(lightsAlpha(day, wave)));
-    this.clouds.forEach(({ sprite, depth, alpha }) => {
-      sprite.tilePositionX -= (drift.vx * depth * dt) / PIXEL;
-      sprite.setTint(mixColor(0xffffff, CLOUD_NIGHT, day)).setAlpha(alpha * (1 - day * 0.45));
-    });
-    this.parallax.forEach(({ image, depth }) => image.setX(-PARALLAX + (W / 2 - focusX) * depth));
+  update(focusX) {
+    this.parallax.forEach(([image, depth]) => image.setX(-PARALLAX + (W / 2 - focusX) * depth));
   }
 }
 
@@ -1539,52 +1538,44 @@ const KID = { foot: DECK - 2, back: 18, scale: 1.45, jump: 16, slump: 6, carrete
 const FIGURE = { hip: -28, shoulder: -58, head: -73, headR: 10, hunch: 5 };
 const FACE = { ink: 0x2a1810, white: 0xffffff, blush: 0xff7a8a, tear: 0x8fd3ff };
 const PANTS = 0x2c3550;
-const HEADGEAR = { cap: 0xd8323c, band: 0xe8432e, hat: 0x8a6a3a, hatBand: 0x3b2414 };
+const HEADGEAR = { cap: 0xd8323c, wool: 0xf2f2f2, ruana: 0x8a3a8a, stripe: 0xffd23f, flower: 0xff5d8f, hat: 0x8a6a3a, band: 0x3b2414 };
 // One-pixel ink outline around every figure: the figure drawn in ink, nudged one pixel each way.
 const OUTLINE = [[-1, 0], [1, 0], [0, -1], [0, 1]];
-const TRAIL = { time: 0.3, points: 14, width: 14 };
+// How long a kid celebrates (or sulks) after a point.
+const CHEER_S = 1.2;
 const SPIN_RATE = 18;
 const YANK_DECAY = 4;
 const REEL_SPIN = 18;
 
-/** Per-player art state: the kid's look and animation, the dash trail and the cut kite's tumble. */
+/** Per-player art state: the kid's look and animation, and the tumble of a kite it just lost. */
 class Flyer {
   constructor(player, look) {
-    this.player = player;
-    this.look = look;
-    this.side = player === 0 ? 1 : -1;
-    this.clock = 0;
-    this.reset();
-  }
-
-  reset() {
-    assign(this, { len: 0, fray: 0, yank: 0, holding: false, reeling: false, turn: 0, lift: 0, mood: null, trail: [], trailTime: 0, fall: null });
+    assign(this, { player, look, side: player === 0 ? 1 : -1, clock: 0, len: 0, yank: 0, holding: false, turn: 0, lift: 0, cheerTime: 0, fall: null });
   }
 
   dash() {
     this.yank = 1;
-    this.trailTime = TRAIL.time;
   }
 
-  /** The kid's own animation: jumping after winning a point, slumping after losing one. */
-  pose(mood, dt) {
+  /** Celebrates (or sulks) for a while; an endless cheer closes the match. */
+  cheer(mood, seconds = CHEER_S) {
+    assign(this, { cheering: mood, cheerTime: seconds });
+  }
+
+  /** The kid's own animation: jumping while it celebrates, slumping while it sulks. */
+  pose(dt) {
     this.clock += dt;
-    this.mood = mood;
-    this.lift = mood === 'win' ? abs(sin(this.clock * 9)) * KID.jump : 0;
+    this.cheerTime -= dt;
+    this.mood = this.cheerTime > 0 ? this.cheering : null;
+    this.lift = this.mood === 'win' ? abs(sin(this.clock * 9)) * KID.jump : 0;
   }
 
-  /** Follows the kite since the last frame; returns whether its string was sawn meanwhile. */
-  update(kite, mood, dt) {
-    this.pose(mood, dt);
-    const frayed = kite.fray > this.fray + 0.5;
-    this.reeling = kite.len < this.len - 0.1;
-    assign(this, { len: kite.len, fray: kite.fray, holding: kite.holding });
+  /** Follows its kite: the arm yanks on JALAR and stays up while B1 is held; the reel spins while reeling. */
+  update(kite, dt) {
+    this.pose(dt);
+    if (kite.len < this.len - 0.1) this.turn += dt * REEL_SPIN;
+    assign(this, { len: kite.len, holding: kite.holding });
     this.yank = kite.holding ? 1 : max(0, this.yank - dt * YANK_DECAY);
-    this.turn += this.reeling ? dt * REEL_SPIN : 0;
-    this.trailTime = max(0, this.trailTime - dt);
-    if (this.trailTime > 0) this.trail.unshift({ x: kite.x, y: kite.y });
-    if (this.trailTime === 0 || this.trail.length > TRAIL.points) this.trail.pop();
-    return frayed;
   }
 
   /** The string hand: on the anchor at rest, yanked back and up on JALAR. */
@@ -1609,30 +1600,33 @@ const drawCarrete = (g, x, y, turn) => {
 /** Cap of hair over the top of the head, shared by most styles. */
 const hairCap = (g, { x, y }, tone) => g.fillStyle(tone).fillEllipse(x, y - 5, 22, 12);
 
-// One painter per hair style (indices as in HAIRS_BY_BODY), drawn over the head: (g, head, side, tone, clock).
+// One painter per hair style (indices as in HAIRS_BY_BODY, then the rivals'), drawn over the head:
+// (g, head, side, hair tone, dye, clock). `dye` turns a fixed colour into ink for the outline pass.
 const HAIR_PAINTERS = [
   (g, h, s, tone) => hairCap(g, h, tone).fillRect(h.x - s * 10 - 1.5, h.y - 6, 3, 7),
-  (g, h, s) => {
-    g.fillStyle(HEADGEAR.cap).fillEllipse(h.x, h.y - 5, 23, 13);
-    g.fillRect(min(h.x - s * 8, h.x - s * 18), h.y - 7, 10, 3);
-  },
-  (g, h, s, tone) => [-8, -4, 0, 4, 8, -5, 2].forEach((ox, i) => g.fillStyle(tone).fillCircle(h.x + ox, h.y - (i < 5 ? 6 : 11), 5)),
-  (g, h, s, tone) => hairCap(g, h, mixColor(tone, 0x888888, 0.4)).fillStyle(tone).fillEllipse(h.x - s, h.y - 12, 7, 16),
-  (g, h, s, tone, clock) => {
-    hairCap(g, h, tone).fillEllipse(h.x - s * 13, h.y + 1 + sin(clock * 4) * 2, 8, 17);
-    g.fillStyle(HEADGEAR.band).fillCircle(h.x - s * 10, h.y - 5, 2.5);
-  },
+  (g, h, s, tone, dye) => g.fillStyle(dye(HEADGEAR.cap)).fillEllipse(h.x, h.y - 5, 23, 13).fillRect(min(h.x - s * 8, h.x - s * 18), h.y - 7, 10, 3),
+  (g, h, s, tone, dye, clock) => hairCap(g, h, tone).fillEllipse(h.x - s * 13, h.y + 1 + sin(clock * 4) * 2, 8, 17).fillStyle(dye(HEADGEAR.cap)).fillCircle(h.x - s * 10, h.y - 5, 2.5),
   (g, h, s, tone) => hairCap(g, h, tone).fillCircle(h.x - s * 2, h.y - 13, 6),
-  (g, h, s, tone) => [-1, 1].forEach((k) => hairCap(g, h, tone).fillEllipse(h.x + k * 10, h.y + 7, 5, 15)),
-  (g, h, s, tone) => hairCap(g, h, tone).fillRoundedRect(min(h.x - s * 3, h.x - s * 13), h.y - 6, 10, 22, 4),
+  // LA GOCHA: a striped ruana over the shoulders and a wool hat with a pompom.
+  (g, h, s, tone, dye) => {
+    const poncho = [[-10, 12], [10, 12], [18, 42], [-18, 42]].map(([x, y]) => ({ x: h.x + x, y: h.y + y }));
+    g.fillStyle(dye(HEADGEAR.ruana)).fillPoints(poncho, true).fillStyle(dye(HEADGEAR.stripe)).fillRect(h.x - 16, h.y + 32, 32, 3);
+    hairCap(g, h, tone).fillStyle(dye(HEADGEAR.wool)).fillEllipse(h.x, h.y - 7, 23, 14).fillStyle(dye(HEADGEAR.cap)).fillCircle(h.x, h.y - 15, 4);
+  },
+  // EL GUARO: a mop of curls.
+  (g, h, s, tone) => [-8, -4, 0, 4, 8, -5, 2].forEach((ox, i) => g.fillStyle(tone).fillCircle(h.x + ox, h.y - (i < 5 ? 6 : 11), 5)),
+  // LA MARGARITEÑA: long hair down her back with a flower.
+  (g, h, s, tone, dye) => hairCap(g, h, tone).fillRect(min(h.x - s * 3, h.x - s * 13), h.y - 6, 10, 24).fillStyle(dye(HEADGEAR.flower)).fillCircle(h.x - s * 7, h.y - 8, 3.5),
+  // EL MARACUCHO: spiky hair.
   (g, h, s, tone) => {
     [-7, -2, 3, 8].forEach((ox) => g.fillStyle(tone).fillTriangle(h.x + ox - 4, h.y - 6, h.x + ox + 4, h.y - 6, h.x + ox - s * 2, h.y - 15));
-    hairCap(g, h, tone).fillStyle(HEADGEAR.band).fillRect(h.x - 10, h.y - 7, 20, 3);
+    hairCap(g, h, tone);
   },
-  (g, h, s, tone) => {
+  // DON GOYO: white hair under a sombrero.
+  (g, h, s, tone, dye) => {
     g.fillStyle(tone).fillEllipse(h.x - s * 8, h.y + 1, 6, 9);
-    g.fillStyle(HEADGEAR.hat).fillRoundedRect(h.x - 8, h.y - 19, 16, 11, 4).fillEllipse(h.x, h.y - 8, 34, 7);
-    rect(g, HEADGEAR.hatBand, h.x - 8, h.y - 11, 16, 2);
+    g.fillStyle(dye(HEADGEAR.hat)).fillRoundedRect(h.x - 8, h.y - 19, 16, 11, 4).fillEllipse(h.x, h.y - 8, 34, 7);
+    rect(g, dye(HEADGEAR.band), h.x - 8, h.y - 11, 16, 2);
   },
 ];
 
@@ -1662,7 +1656,7 @@ const drawFace = (g, { x, y }, side, expression, old) => {
 /** One pass of a figure in local units, in the given palette (ink for the outline passes). */
 const paintFigure = (g, look, pose, palette, hand, face) => {
   const { side: s, mood, lift, yank } = pose;
-  const { skin, cloth, pants, tone } = palette;
+  const { skin, cloth, pants, tone, dye } = palette;
   const chama = look.body === 1;
   const old = look.body === 2;
   const slump = mood === 'lose' ? KID.slump : 0;
@@ -1679,7 +1673,7 @@ const paintFigure = (g, look, pose, palette, hand, face) => {
   rect(g, cloth, lean / 2 - width / 2, shoulder, width, hip - shoulder + 2);
   if (old) g.fillEllipse(lean / 2 + s * 4, hip - 10, 18, 16);
   g.fillStyle(skin).fillCircle(head.x, head.y, FIGURE.headR);
-  HAIR_PAINTERS[look.hair](g, head, s, tone, pose.clock);
+  HAIR_PAINTERS[look.hair](g, head, s, tone, dye, pose.clock);
   if (face) drawFace(g, head, s, pose.expression, old);
   const from = { x: lean + s * 5, y: shoulder + 3 };
   const arm = (to) => {
@@ -1705,10 +1699,10 @@ const drawAvatar = (g, look, pose) => {
   g.save().translateCanvas(pose.x, pose.y).scaleCanvas(scale, scale);
   OUTLINE.forEach(([dx, dy]) => {
     g.save().translateCanvas(dx * nudge, dy * nudge);
-    paintFigure(g, look, pose, { skin: INK, cloth: INK, pants: INK, tone: INK }, hand, false);
+    paintFigure(g, look, pose, { skin: INK, cloth: INK, pants: INK, tone: INK, dye: () => INK }, hand, false);
     g.restore();
   });
-  paintFigure(g, look, pose, { skin: look.skin, cloth: look.shirt, pants, tone: look.hairTone }, hand, true);
+  paintFigure(g, look, pose, { skin: look.skin, cloth: look.shirt, pants, tone: look.hairTone, dye: (color) => color }, hand, true);
   if (!pose.mood) drawCarrete(g, hand.x - pose.side * KID.carrete, hand.y + 9, pose.turn);
   g.restore();
 };
@@ -1785,6 +1779,8 @@ const drawTail = (g, kite, [a, b], shimmer = 1) => {
   g.lineStyle(2, INK).strokePoints(tail.slice(0, TAIL.bladeFrom + 1));
   for (let i = 1; i < TAIL.bladeFrom; i += 1) drawBow(g, tail[i], tail[i - 1], i % 2 ? a : b);
   const blade = tail.slice(TAIL.bladeFrom);
+  // VIDRIO: ground glass glued on the blade glows.
+  if (kite.vidrio) g.lineStyle(14, GLASS, 0.4 + 0.3 * shimmer).strokePoints(blade);
   g.lineStyle(6, INK).strokePoints(blade);
   g.lineStyle(2, STEEL).strokePoints(blade);
   g.fillStyle(0xffffff);
@@ -1797,12 +1793,30 @@ const drawTail = (g, kite, [a, b], shimmer = 1) => {
   rect(g, 0xffffff, tip.x - 4, tip.y - 1, 8, 2, shimmer).fillRect(tip.x - 1, tip.y - 4, 2, 8);
 };
 
-/** JALAR: a fading whoosh ribbon along the kite's path. */
-const drawTrail = (g, { trail, look }) => {
-  trail.slice(1).forEach((point, i) => {
-    const fade = 1 - i / TRAIL.points;
-    g.lineStyle(round(TRAIL.width * fade / PIXEL) * PIXEL, look.kite.colors[0], 0.4 * fade).lineBetween(trail[i].x, trail[i].y, point.x, point.y);
-  });
+// Power colours and icons: glass shards, a turbo bolt, a nylon ring and a little vulture.
+const GLASS = 0x8ff3ff;
+const TURBO_FLAME = [0xffd23f, 0xff7a2f];
+const CRATE = { size: 32, wood: 0xb06a32, edge: 0x6a3a1a };
+const BOLT_ICON = [[2, -12], [-6, 2], [0, 2], [-2, 12], [6, -2], [0, -2]];
+
+/** NYLON shield bubble and TURBO flames around a kite. */
+const drawAura = (g, kite, clock) => {
+  if (kite.nylon) g.lineStyle(2, GLASS, 0.6 + 0.3 * sin(clock * 8)).strokeCircle(kite.x, kite.y, 42);
+  if (!kite.turbo) return;
+  const [dx, dy] = unit(-kite.vx, -kite.vy);
+  TURBO_FLAME.forEach((color, i) => rect(g, color, kite.x + dx * (30 + i * 10) - 4, kite.y + dy * (30 + i * 10) - 4, 8 - i * 2, 8 - i * 2, 0.6 + 0.4 * sin(clock * 30 + i)));
+};
+
+/** A floating power box: a wooden crate with its power's icon, bobbing on the wind. */
+const drawBox = (g, { x, y, kind }, clock) => {
+  const by = y + round(sin(clock * 3 + x) * 3) * PIXEL;
+  const half = CRATE.size / 2;
+  rect(g, INK, x - half - 2, by - half - 2, CRATE.size + 4, CRATE.size + 4).fillStyle(CRATE.wood).fillRect(x - half, by - half, CRATE.size, CRATE.size);
+  g.lineStyle(2, CRATE.edge).strokeRect(x - half + 3, by - half + 3, CRATE.size - 6, CRATE.size - 6);
+  if (kind === 'vidrio') g.fillStyle(GLASS).fillTriangle(x, by - 11, x + 7, by + 3, x - 5, by + 10).fillStyle(0xffffff).fillRect(x - 1, by - 5, 3, 3);
+  else if (kind === 'turbo') g.fillStyle(TURBO_FLAME[0]).fillPoints(posed(BOLT_ICON, x, by, 0), true);
+  else if (kind === 'nylon') g.lineStyle(4, GLASS).strokeCircle(x, by, 8);
+  else drawVulture(g, x, by, sin(clock * 12), 0.5);
 };
 
 // ---------------------------------------------------------------------------
@@ -1930,32 +1944,25 @@ const createAudioContext = () => {
 };
 
 const midiToHz = (midi) => 440 * 2 ** ((midi - 69) / 12);
-// A bright D major flourish, plucked like a cuatro, for every point won.
-const JINGLE = [62, 66, 69, 74, 78];
-const SCRATCH_GAP = 0.08;
+// A bright D major flourish for every point won, and a rising one for a power.
+const JINGLE = [62, 66, 69, 74];
+const POWER_UP = [69, 76, 81];
 // Each sound is a list of voices: [wave or 'noise', frequency, filter type, filter sweep from, to, gain, seconds, delay].
+const notes = (midis, gain) => midis.map((midi, i) => ['triangle', midiToHz(midi), 'lowpass', 3500, 900, gain, 0.4, i * 0.08]);
 const SOUNDS = {
   whoosh: [['noise', 0, 'bandpass', 400, 2400, 0.35, 0.3]],
-  scratch: [['noise', 0, 'highpass', 3000, 1800, 0.2, 0.05]],
   snap: [['noise', 0, 'highpass', 5000, 5000, 0.9, 0.07], ['sine', 90, 'lowpass', 400, 200, 0.5, 0.3]],
-  crackle: [
-    ...[0, 1, 2, 3, 4, 5, 6].map((i) => ['noise', 0, 'bandpass', 2500 + i * 300, 2500 + i * 300, 0.5, 0.03, i * 0.045]),
-    ['sawtooth', 55, 'lowpass', 4000, 4000, 0.2, 0.5],
-  ],
+  crackle: [['sawtooth', 55, 'lowpass', 4000, 300, 0.4, 0.5]],
   thud: [['sine', 70, 'lowpass', 300, 300, 0.5, 0.35]],
   // Dull click for a JALAR pressed without enough AIRE.
   refuse: [['square', 160, 'lowpass', 900, 900, 0.12, 0.07]],
-  clink: [['triangle', 1800, 'lowpass', 4000, 4000, 0.2, 0.12]],
-  squawk: [['sawtooth', 420, 'lowpass', 1400, 600, 0.15, 0.18]],
-  gust: [['noise', 0, 'lowpass', 300, 1500, 0.5, 1.2]],
   go: [['triangle', 880, 'lowpass', 4000, 4000, 0.2, 0.15]],
-  jingle: JINGLE.map((midi, i) => ['triangle', midiToHz(midi), 'lowpass', 3500, 900, 0.3, 0.45, i * 0.08]),
+  jingle: notes(JINGLE, 0.3),
+  power: notes(POWER_UP, 0.25),
 };
 
-/** Light synthesised SFX over a wind bed; silent without an AudioContext and never needed to play. */
+/** Light synthesised SFX; silent without an AudioContext and never needed to play. */
 const createSfx = (ctx) => {
-  let quietUntil = 0;
-  let bed = null;
   const master = ctx && ctx.createGain();
   const noise = ctx && ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
   if (ctx) {
@@ -1965,12 +1972,11 @@ const createSfx = (ctx) => {
     for (let i = 0; i < data.length; i += 1) data[i] = Math.random() * 2 - 1;
     window.addEventListener('keydown', () => ctx.state === 'suspended' && ctx.resume());
   }
-  const noiseSource = () => assign(ctx.createBufferSource(), { buffer: noise, loop: true });
 
   /** One voice through a sweeping filter and a decaying gain to the master bus. */
   const voice = ([wave, frequency, type, from, to, gain, duration, delay = 0]) => {
     const start = ctx.currentTime + delay;
-    const source = wave === 'noise' ? noiseSource() : assign(ctx.createOscillator(), { type: wave });
+    const source = wave === 'noise' ? assign(ctx.createBufferSource(), { buffer: noise }) : assign(ctx.createOscillator(), { type: wave });
     if (frequency) source.frequency.value = frequency;
     const filter = assign(ctx.createBiquadFilter(), { type });
     const amp = ctx.createGain();
@@ -1983,31 +1989,7 @@ const createSfx = (ctx) => {
     source.stop(start + duration);
   };
 
-  return {
-    play(name) {
-      if (ctx) SOUNDS[name].forEach(voice);
-    },
-
-    /** Fray scratches fire every frame while a blade saws, so they are spaced out. */
-    scratch() {
-      if (!ctx || ctx.currentTime < quietUntil) return;
-      quietUntil = ctx.currentTime + SCRATCH_GAP;
-      this.play('scratch');
-    },
-
-    /** Looping filtered noise whose loudness and brightness follow the wind. */
-    setWind(level) {
-      if (!ctx) return;
-      if (!bed) {
-        bed = { source: noiseSource(), filter: assign(ctx.createBiquadFilter(), { type: 'lowpass' }), amp: ctx.createGain() };
-        bed.amp.gain.value = 0;
-        bed.source.connect(bed.filter).connect(bed.amp).connect(master);
-        bed.source.start();
-      }
-      bed.amp.gain.setTargetAtTime(0.03 + level * 0.06, ctx.currentTime, 0.4);
-      bed.filter.frequency.setTargetAtTime(250 + level * 700, ctx.currentTime, 0.4);
-    },
-  };
+  return { play: (name) => ctx && SOUNDS[name].forEach(voice) };
 };
 
 const sfx = createSfx(createAudioContext());
@@ -2016,129 +1998,110 @@ const sfx = createSfx(createAudioContext());
 // 15. Duel view & HUD
 // ---------------------------------------------------------------------------
 
-const HUD = { margin: 24, nameY: 24, pipY: 58, pipGap: 32, meterY: 84, meterW: 150, meterH: 22 };
-// Venezuelan tricolour streaming from a pole at the top centre: it waves in gusts, droops in a calm.
-const FLAG = { x: W / 2, y: 14, length: 58, stripe: 6, droop: 18 };
-const FLAG_COLORS = [0xffcc00, 0x00247d, 0xcf142b];
+const HUD = { margin: 24, nameY: 24, scoreY: 56, pipGap: 30, meterY: 84, meterW: 120, meterH: 10, powerY: 104, clockY: 30 };
 const CUES = {
   viene: { text: '¡SE VIENE LA CALMA!', color: DIM },
   calma: { text: '¡CALMA! · JALA PARA SUBIR', color: CREAM },
-  // The first round's calm teaches the hold instead.
+  // The match's first calm teaches the hold instead.
   primera: { text: 'MANTÉN B1 PARA JALAR', color: GOLD },
   rafaga: { text: '¡RÁFAGA!', color: GOLD },
 };
-const VERDICTS = {
-  cut: ['¡CORTADO!', 'LE CORTARON EL HILO'],
-  line: ['¡CHISPAZO!', 'SE ENREDÓ EN EL CABLE'],
-  ground: ['¡SE CAYÓ!', 'ATERRIZÓ EN LA AZOTEA'],
-  draw: ['¡EMPATE!', 'LOS DOS AL SUELO'],
+// Banner and detail line for each point cause, power and match moment.
+const SHOUTS = {
+  cut: ['¡CORTADO!'],
+  line: ['¡CHISPAZO!'],
+  ground: ['¡SE CAYÓ!'],
+  draw: ['¡EMPATE!'],
+  vidrio: ['¡VIDRIO!', 'UN SERRUCHAZO CORTA'],
+  turbo: ['¡TURBO!', 'VUELA RÁPIDO, AIRE SIN FIN'],
+  nylon: ['¡NYLON!', 'AGUANTA UN CORTE'],
+  zamuro: ['¡ZAMURO ALIADO!', 'VA POR EL RIVAL'],
+  shield: ['¡NYLON!', 'EL HILO AGUANTÓ'],
+  double: ['¡DOBLE!', 'LOS PUNTOS VALEN DOBLE'],
+  sudden: ['¡MUERTE SÚBITA!', 'EL PRÓXIMO PUNTO GANA'],
+  go: ['¡A VOLAR!'],
 };
-const GO_SHOWN = 0.7;
+const SHOUT_S = 1.2;
 const REFUSE_S = 0.3;
 const COUNTDOWN_STEPS = 3;
-// Camera choreography for points: hitstop is applied by the duel loop.
-const SHOT = { zoom: 1.08, zoomMs: 260, shakeMs: 280, shake: 0.006, resetMs: 500, hitstop: 0.08 };
+// Juice for a cut: the duel loop freezes for `hitstop` s, then the camera shakes.
+const SHOT = { shakeMs: 280, shake: 0.006, hitstop: 0.15 };
 const FOCUS_EASE = 2;
 // Without an AudioContext the SFX stay silent: the title's attract demo plays through this one.
 const SILENCE = createSfx(null);
-const EVENT_SOUNDS = { go: 'go', refused: 'refuse', dash: 'whoosh', clash: 'clink', stun: 'squawk', ventarron: 'gust' };
-
-/** Banner text, detail line and colour for the current moment of the duel. */
-const bannerFor = (duel) => {
-  if (duel.phase === 'countdown') {
-    return [String(ceil((duel.clock / ROUND.countdown) * COUNTDOWN_STEPS)), `RONDA ${duel.round + 1}`, GOLD];
-  }
-  if (duel.verdict) {
-    const { cause, winner } = duel.verdict;
-    return [...VERDICTS[cause], winner === null ? CREAM : PLAYER_COLORS[winner]];
-  }
-  return duel.elapsed < GO_SHOWN ? ['¡A VOLAR!', '', GOLD] : ['', '', CREAM];
-};
+const EVENT_SOUNDS = { go: 'go', refused: 'refuse', dash: 'whoosh', power: 'power', shield: 'power' };
 
 /** Tints every letter from cream at the top into `color` at the bottom: chunky arcade banner type. */
 const shine = (text, color) => text.setTint(CREAM, CREAM, color, color);
 
-/** Venezuelan tricolour on a pole: it streams with the wind (waving harder in gusts) and droops in a calm. */
-const drawFlag = (g, drift, clock) => {
-  const strength = min(1, abs(drift.vx) / BREEZE.speed);
-  const tipX = FLAG.x + FLAG.length * max(0.35, strength) * (drift.vx < 0 ? -1 : 1);
-  const tipY = FLAG.droop * (1 - strength) + sin(clock * 9) * 3 * strength;
-  FLAG_COLORS.forEach((color, row) => {
-    const [top, bottom] = [row, row + 1].map((edge) => FLAG.y + edge * FLAG.stripe);
-    g.fillStyle(color).fillPoints([{ x: FLAG.x, y: top }, { x: tipX, y: top + tipY }, { x: tipX, y: bottom + tipY }, { x: FLAG.x, y: bottom }], true);
-  });
-  rect(g, INK, FLAG.x - 2, FLAG.y - 4, 4, 38);
-  rect(g, CREAM, FLAG.x - 3, FLAG.y - 8, 6, 6);
-};
+const clockText = (seconds) => `${floor(seconds / 60)}:${String(floor(seconds % 60)).padStart(2, '0')}`;
 
-/** Names, score pips (little papagayos), labelled AIRE meters, the flag and the banners. */
+/** Names, score (TIEMPO) or kites left (VIDAS), AIRE meters, active powers, the clock and the banners. */
 class Hud {
-  constructor(scene, names, kites) {
-    this.kites = kites;
-    this.animations = scene.tweens;
+  constructor(scene, names, kites, rules) {
+    assign(this, { kites, rules, shoutTime: 0, refusedAt: [-REFUSE_S, -REFUSE_S], clock: 0 });
     this.g = scene.add.graphics();
-    const left = (player) => (player === 0 ? HUD.margin : W - HUD.margin - HUD.meterW);
-    const tags = names.map((name, player) =>
-      label(scene, player === 0 ? HUD.margin : W - HUD.margin, HUD.nameY, name, 1, PLAYER_COLORS[player]).setOrigin(player, 0.5),
-    );
-    this.meters = [0, 1].map((player) => label(scene, left(player) + HUD.meterW / 2, HUD.meterY + HUD.meterH / 2, 'MANTÉN B1', 1));
+    const side = (player, x) => (player ? W - x : x);
+    const tags = names.map((name, player) => label(scene, side(player, HUD.margin), HUD.nameY, name, 1, PLAYER_COLORS[player]).setOrigin(player, 0.5));
+    this.scores = [0, 1].map((player) => label(scene, side(player, HUD.margin), HUD.scoreY, '', 2).setOrigin(player, 0.5));
+    this.powers = [0, 1].map((player) => label(scene, side(player, HUD.margin), HUD.powerY, '', 1, GLASS).setOrigin(player, 0.5));
+    this.time = label(scene, W / 2, HUD.clockY, '', 2);
     // Banners sit above the fight (which happens around y 150-350) so they never hide a cut.
     this.banner = label(scene, W / 2, 124, '', 3);
-    this.detail = label(scene, W / 2, 172, '', 1);
-    this.storm = label(scene, W / 2, 100, '¡VENTARRÓN!', 2, GOLD);
+    this.detail = label(scene, W / 2, 168, '', 1);
     this.cue = label(scene, W / 2, 134, '', 2);
-    scene.tweens.add({ targets: [this.storm, this.cue], alpha: 0.55, duration: 300, yoyo: true, repeat: -1 });
-    this.shown = null;
-    this.refusedAt = [-REFUSE_S, -REFUSE_S];
-    this.clock = 0;
-    this.left = left;
-    this.objects = [this.g, ...tags, ...this.meters, this.banner, this.detail, this.storm, this.cue];
+    scene.tweens.add({ targets: this.cue, alpha: 0.55, duration: 300, yoyo: true, repeat: -1 });
+    this.left = (player) => side(player, HUD.margin + (player ? HUD.meterW : 0));
+    this.objects = [this.g, ...tags, ...this.scores, ...this.powers, this.time, this.banner, this.detail, this.cue];
   }
 
-  update(duel, drift, clock) {
-    this.clock = clock;
-    const g = this.g.clear();
-    drawFlag(g, drift, clock);
-    duel.kites.forEach((kite) => this.drawPlayer(g, kite, duel.score[kite.player], clock, this.kites[kite.player]));
-    const banner = bannerFor(duel);
-    this.showBanner(banner);
-    // Wind cues wait until the banner is gone so the two never overlap.
-    const flying = duel.phase === 'fly' && !banner[0];
-    this.storm.setVisible(duel.ventarron && flying);
-    // JALA PARA SUBIR only once the calm has really started, when a JALAR visibly lifts the kite.
-    const coming = windCue(duel) === 'calma' && weatherAt(duel).wind >= WIND.lull;
-    const kind = coming ? 'viene' : windCue(duel);
-    const cue = flying && CUES[kind === 'calma' && duel.round === 0 ? 'primera' : kind];
-    this.cue.setVisible(Boolean(cue));
-    if (cue) this.cue.setText(cue.text).setTint(cue.color);
+  /** A banner (and detail line) in a colour, shown for a moment. */
+  shout(kind, color = GOLD, detail = SHOUTS[kind][1] || '') {
+    this.shoutTime = SHOUT_S;
+    shine(this.banner.setText(SHOUTS[kind][0]), color);
+    this.detail.setText(detail);
   }
 
-  /** JALAR pressed without enough AIRE: the meter shakes and flashes red. */
+  /** JALAR pressed without enough AIRE: the meter flashes red. */
   refuse(player) {
     this.refusedAt[player] = this.clock;
   }
 
-  drawPlayer(g, kite, points, clock, design) {
-    const refused = max(0, REFUSE_S - (clock - this.refusedAt[kite.player]));
-    const left = this.left(kite.player) + round(sin(clock * 90) * refused * 10) * PIXEL;
-    for (let pip = 0; pip < ROUND.wins; pip += 1) {
-      drawPapagayo(g, left + 12 + pip * HUD.pipGap, HUD.pipY, 0, 0.38, design, pip < points);
+  update(duel, dt) {
+    this.clock += dt;
+    this.shoutTime -= dt;
+    const g = this.g.clear();
+    duel.kites.forEach((kite, player) => this.drawPlayer(g, duel, kite, player));
+    const left = MATCH.time - duel.elapsed;
+    const sudden = left <= 0;
+    this.time.setText(duel.rules === 'tiempo' ? (sudden ? '¡MUERTE SÚBITA!' : clockText(left + 0.99)) : '');
+    this.time.setTint(left < MATCH.double ? DANGER : CREAM).setScale(sudden ? 0.5 : 1);
+    if (duel.phase === 'countdown') {
+      this.shoutTime = 0;
+      shine(this.banner.setText(String(ceil((duel.clock / MATCH.countdown) * COUNTDOWN_STEPS))), GOLD);
+      this.detail.setText(duel.rules === 'tiempo' ? 'MÁS PUNTOS EN 1:30' : `${MATCH.lives} PAPAGAYOS CADA UNO`);
     }
-    const ready = canPull(kite);
-    const fillWidth = floor((HUD.meterW * kite.air) / PIXEL) * PIXEL;
-    rect(g, INK, left - 4, HUD.meterY - 4, HUD.meterW + 8, HUD.meterH + 8);
-    g.fillStyle(refused ? DANGER : ready ? PLAYER_COLORS[kite.player] : DIM, ready ? 0.7 + 0.3 * sin(clock * 8) : 0.6);
-    g.fillRect(left, HUD.meterY, fillWidth, HUD.meterH);
-    this.meters[kite.player].setAlpha(ready ? 1 : 0.6);
+    const shouting = duel.phase === 'countdown' || this.shoutTime > 0;
+    this.banner.setVisible(shouting);
+    this.detail.setVisible(shouting);
+    // JALA PARA SUBIR only once the calm has really started, when a JALAR visibly lifts the kite.
+    const coming = windCue(duel) === 'calma' && weatherAt(duel).wind >= WIND.lull;
+    const kind = coming ? 'viene' : windCue(duel);
+    const cue = !shouting && duel.phase === 'fly' && CUES[kind === 'calma' && duel.elapsed < MATCH.hint ? 'primera' : kind];
+    this.cue.setVisible(Boolean(cue));
+    if (cue) this.cue.setText(cue.text).setTint(cue.color);
   }
 
-  showBanner([text, detail, color]) {
-    const key = `${text}|${color}`;
-    if (key === this.shown) return;
-    this.shown = key;
-    shine(this.banner.setText(text), color);
-    this.detail.setText(detail);
-    if (text) this.animations.add({ targets: this.banner, scale: { from: 1.5, to: 1 }, duration: 260, ease: 'Back.easeOut' });
+  drawPlayer(g, duel, kite, player) {
+    const left = this.left(player);
+    const refused = this.clock - this.refusedAt[player] < REFUSE_S;
+    if (duel.rules === 'tiempo') this.scores[player].setText(String(duel.score[player]));
+    else for (let pip = 0; pip < MATCH.lives; pip += 1) drawPapagayo(g, left + 10 + pip * HUD.pipGap, HUD.scoreY, 0, 0.36, this.kites[player], pip < duel.lives[player]);
+    const ready = canPull(kite);
+    rect(g, INK, left - 4, HUD.meterY - 4, HUD.meterW + 8, HUD.meterH + 8);
+    rect(g, refused ? DANGER : ready ? PLAYER_COLORS[player] : DIM, left, HUD.meterY, floor((HUD.meterW * kite.air) / PIXEL) * PIXEL, HUD.meterH);
+    const power = POWERS.find((kind) => kite[kind]);
+    this.powers[player].setText(power ? `${power.toUpperCase()} ${power === 'nylon' ? '' : ceil(kite[power])}` : '');
   }
 }
 
@@ -2147,20 +2110,21 @@ class Hud {
  * in front of the azoteas on `front`. On its own it is the backdrop of the menus, with a breathing breeze.
  */
 class Scenery {
-  constructor(scene, day, looks, moods = [null, null]) {
+  constructor(scene, looks, moods = []) {
     this.backdrop = new Backdrop(scene);
     this.back = scene.add.graphics();
-    this.backdrop.addForeground(scene);
+    this.backdrop.addForeground();
     this.front = scene.add.graphics();
     this.wind = new WindParticles();
     this.flyers = looks.map((look, player) => new Flyer(player, look));
-    assign(this, { day, moods, clock: 0, focus: W / 2 });
+    moods.forEach((mood, player) => this.flyers[player].cheer(mood, Infinity));
+    assign(this, { clock: 0, focus: W / 2 });
   }
 
-  /** Moves the sky and the wind under `weather` and redraws the wind and the kids; returns the drift. */
+  /** Moves the wind under `weather` and redraws it and the kids; returns the drift. */
   animate(weather, dt) {
     const drift = windDrift(weather);
-    this.backdrop.update(this.day, drift, dt, this.focus);
+    this.backdrop.update(this.focus);
     this.wind.update(drift, dt);
     this.wind.draw(this.back.clear(), drift);
     drawRooftops(this.front.clear(), this.flyers);
@@ -2169,135 +2133,123 @@ class Scenery {
 
   update(dt) {
     this.clock += dt;
-    const weather = { wind: 1 + 0.4 * sin(this.clock * 0.5), gust: 80 * sin(this.clock * 0.3) };
-    this.flyers.forEach((flyer, player) => flyer.pose(this.moods[player], dt));
-    this.animate(weather, dt);
-    sfx.setWind(weather.wind / 2);
+    this.flyers.forEach((flyer) => flyer.pose(dt));
+    this.animate({ wind: 1 + 0.4 * sin(this.clock * 0.5), gust: 80 * sin(this.clock * 0.3) }, dt);
   }
 }
 
 /**
- * Everything the duel shows on top of the city: birds, zamuros, kites, effects, camera work and HUD.
+ * Everything the duel shows on top of the city: birds, zamuros, boxes, kites, effects, camera shakes and HUD.
  * Without player names it is the title's attract demo: no HUD, no camera moves and no sound.
  */
 class DuelView extends Scenery {
-  constructor(scene, names, looks) {
-    super(scene, 0, looks);
+  constructor(scene, names, looks, rules) {
+    super(scene, looks);
     this.attract = !names;
     this.audio = this.attract ? SILENCE : sfx;
-    this.camera = scene.cameras.main.setBounds(0, 0, W, H);
+    this.camera = scene.cameras.main;
     this.fx = new Fx(scene);
-    if (!this.attract) this.addHud(scene, names);
     this.birds = new Birds();
+    if (names) {
+      const world = scene.children.list.slice();
+      this.hud = new Hud(scene, names, looks.map(({ kite }) => kite), rules);
+      // The HUD gets its own camera so shakes never move it.
+      this.camera.ignore(this.hud.objects);
+      pixelCamera(scene.cameras.add(0, 0, PW, PH)).ignore(world);
+    }
   }
 
-  /** The HUD gets its own camera so zooms and shakes never move it. */
-  addHud(scene, names) {
-    const world = scene.children.list.slice();
-    this.hud = new Hud(scene, names, this.flyers.map((flyer) => flyer.look.kite));
-    this.camera.ignore(this.hud.objects);
-    pixelCamera(scene.cameras.add(0, 0, PW, PH)).ignore(world);
-  }
-
-  shoot(move) {
-    if (!this.attract) move(this.camera);
-  }
-
-  /** `dt` is real time (the cut kite tumbles at full speed); the rest of the world runs at `slowmo`. */
-  update(duel, dt, slowmo) {
-    const world = dt * slowmo;
-    this.clock += world;
+  update(duel, dt) {
+    this.clock += dt;
     // The city feels the wind before the kites do: everything decorative shows the coming weather.
     const ahead = weatherAt(duel, duel.elapsed + WIND.lead);
-    this.day = lerp(this.day, dayPhase(duel.round), min(1, world * DAY.ease));
-    this.focus = lerp(this.focus, (duel.kites[0].x + duel.kites[1].x) / 2, min(1, world * FOCUS_EASE));
-    this.birds.update(duel.zamuros, world);
+    this.focus = lerp(this.focus, (duel.kites[0].x + duel.kites[1].x) / 2, min(1, dt * FOCUS_EASE));
+    this.birds.update(duel.zamuros, dt);
     this.fx.update(dt);
-    duel.kites.forEach((kite, player) => {
-      const flyer = this.flyers[player];
-      if (flyer.update(kite, moodOf(duel.verdict, player), world)) this.audio.scratch();
+    this.flyers.forEach((flyer, player) => {
+      flyer.update(duel.kites[player], dt);
       if (flyer.fall) stepFall(flyer.fall, ahead, dt);
     });
-    this.audio.setWind(ahead.wind);
-    this.draw(duel, this.animate(ahead, world));
+    this.animate(ahead, dt);
+    this.draw(duel, dt);
   }
 
-  draw(duel, drift) {
+  draw(duel, dt) {
     const { back, front, clock } = this;
     this.birds.draw(back, clock);
-    duel.zamuros.forEach((zamuro) => drawVulture(back, zamuro.x, zamuro.y, sin(clock * 12 + zamuro.x * 0.05), 1));
+    duel.zamuros.forEach(({ x, y, prey }) => {
+      drawVulture(back, x, y, sin(clock * 12 + x * 0.05), 1);
+      // An allied zamuro wears its side's colour.
+      if (prey !== undefined) rect(back, PLAYER_COLORS[1 - prey], x - 6, y + 2, 12, 4);
+    });
+    duel.boxes.forEach((box) => drawBox(back, box, clock));
     this.fx.draw(front);
-    duel.kites.forEach((kite, player) => this.drawKite(kite, duel.kites[1 - player], this.flyers[player]));
-    if (this.hud) this.hud.update(duel, drift, clock);
+    this.flyers.forEach((flyer, player) => this.drawKite(duel.kites[player], duel.kites[1 - player], flyer));
+    if (this.hud) this.hud.update(duel, dt);
   }
 
-  /** A flying kite on its string, or the tumbling copy of a cut one. */
+  /** A kite on its string (blinking while it rises or is guarded), plus the tumbling one it just lost. */
   drawKite(kite, rival, flyer) {
-    const { front } = this;
-    const shown = flyer.fall || kite;
-    const angle = flyer.fall ? flyer.fall.spin : kiteAngle(kite, flyer);
-    drawTrail(front, flyer);
-    if (!kite.free) drawString(front, flyer, kite, rival);
-    drawTail(front, shown, flyer.look.kite.colors, 0.35 + 0.65 * abs(sin(flyer.clock * 5 + kite.player * 2)));
-    drawPapagayo(front, shown.x, shown.y, angle, 1, flyer.look.kite);
+    const { front, clock } = this;
+    const { fall, look } = flyer;
+    if (fall) {
+      drawTail(front, fall, look.kite.colors);
+      drawPapagayo(front, fall.x, fall.y, fall.spin, 1, look.kite);
+      if (fall.y > H + 100) flyer.fall = null;
+    }
+    if (!vulnerable(kite) && floor(clock * 12) % 2) return;
+    drawString(front, flyer, kite, rival);
+    drawTail(front, kite, look.kite.colors, 0.35 + 0.65 * abs(sin(flyer.clock * 5 + kite.player * 2)));
+    drawAura(front, kite, clock);
+    drawPapagayo(front, kite.x, kite.y, kiteAngle(kite, flyer), 1, look.kite);
   }
 
-  /** Effects, camera work and sounds for each duel event. */
+  /** Effects, camera work, banners and sounds for each duel event. */
   react(event, duel) {
-    const { type, player } = event;
+    const { type, player, kind } = event;
     const kite = duel.kites[player];
     const [a, b] = duel.kites;
+    const color = PLAYER_COLORS[player];
+    const shout = (name, tint) => this.hud && this.hud.shout(name, tint);
     const reactions = {
+      go: () => shout('go'),
       refused: () => this.hud && this.hud.refuse(player),
       dash: () => this.flyers[player].dash(),
       point: () => this.point(event, duel),
-      round: () => this.reset(),
       clash: () => this.fx.sparks(20, (a.x + b.x) / 2, (a.y + b.y) / 2),
       stun: () => this.fx.sparks(10, kite.x, kite.y),
-      ventarron: () => this.shoot((camera) => camera.shake(SHOT.shakeMs * 2, SHOT.shake / 2)),
+      power: () => {
+        shout(kind, color);
+        this.fx.sparks(24, kite.x, kite.y, 1);
+      },
+      shield: () => shout('shield', color),
+      double: () => shout(type, DANGER),
+      sudden: () => shout(type, DANGER),
+      over: () => this.flyers.forEach((flyer, side) => flyer.cheer(side === event.winner ? 'win' : 'lose', Infinity)),
     };
     if (reactions[type]) reactions[type]();
     if (EVENT_SOUNDS[type]) this.audio.play(EVENT_SOUNDS[type]);
   }
 
-  point({ cause, loser, winner }, duel) {
-    if (cause === 'cut') this.cut(duel, loser);
-    else if (cause === 'line') this.chispazo(duel.kites[loser]);
-    else this.audio.play('thud');
-    if (winner !== null) this.audio.play('jingle');
-  }
-
-  /** A warm bloom, shake and a push-in on the cut point while the string snaps and the kite tumbles away. */
-  cut(duel, loser) {
-    const victim = duel.kites[loser];
-    const blade = duel.kites[1 - loser].tail[TAIL.segments];
-    const at = nearestOnSegment(blade, victim.anchor, victim);
+  /** The lost kite tumbles away; a cut snaps its string with a warm bloom, the cables spark, and the kids react. */
+  point({ cause, loser, winner, value, kite }, duel) {
+    if (this.hud) this.hud.shout(cause, winner === null ? CREAM : PLAYER_COLORS[winner], value > 1 ? '¡PUNTO DOBLE!' : '');
+    if (winner === null) return;
     const flyer = this.flyers[loser];
-    flyer.fall = createFall(victim);
-    this.fx.snap(at, () => flyer.hand(victim), flyer.fall);
-    this.shoot((camera) => {
-      camera.shake(SHOT.shakeMs, SHOT.shake);
-      camera.zoomTo(SHOT.zoom / PIXEL, SHOT.zoomMs);
-      camera.pan(at.x, at.y, SHOT.zoomMs);
-    });
-    this.audio.play('snap');
-  }
-
-  chispazo(kite) {
-    this.fx.zap(kite.x, kite.y);
-    this.birds.scatter();
-    this.shoot((camera) => camera.shake(SHOT.shakeMs, SHOT.shake));
-    this.audio.play('crackle');
-  }
-
-  reset() {
-    this.fx.clear();
-    this.birds.reset();
-    this.flyers.forEach((flyer) => flyer.reset());
-    this.shoot((camera) => {
-      camera.zoomTo(1 / PIXEL, SHOT.resetMs);
-      camera.pan(W / 2, H / 2, SHOT.resetMs);
-    });
+    flyer.fall = createFall(kite);
+    flyer.cheer('lose');
+    this.flyers[winner].cheer('win');
+    if (cause === 'cut') {
+      const at = nearestOnSegment(duel.kites[winner].tail[TAIL.segments], kite.anchor, kite);
+      this.fx.snap(at, () => flyer.hand(kite), flyer.fall);
+      this.audio.play('snap');
+    } else if (cause === 'line') {
+      this.fx.zap(kite.x, kite.y);
+      this.birds.scatter();
+      this.audio.play('crackle');
+    } else this.audio.play('thud');
+    if (!this.attract) this.camera.shake(SHOT.shakeMs, SHOT.shake);
+    this.audio.play('jingle');
   }
 }
 
@@ -2351,6 +2303,13 @@ class Menu {
     this.onSelect(this.index);
   }
 
+  /** Reuses the menu for a new question with as many options. */
+  ask(items, onSelect) {
+    this.items.forEach((item, i) => item.setText(items[i]));
+    assign(this, { onSelect, index: 0, locked: false });
+    this.highlight();
+  }
+
   highlight() {
     this.items.forEach((item, i) => item.setTint(i === this.index ? GOLD : CREAM));
     const item = this.items[this.index];
@@ -2365,18 +2324,17 @@ class Menu {
 const BOARD = { x: 110, y: 436, width: 580, height: 136, row: 19 };
 const PAGE_MS = 5000;
 
-/** Top-five table for the bottom panel; fill() repaints it and can highlight one rank. */
-const addBoard = (scene) => {
-  const title = label(scene, W / 2, BOARD.y + 24, 'MEJORES PAPAGAYEROS', 1, GOLD);
+/** Top-five table in the bottom panel; fill() repaints it and can highlight one rank. */
+const addBoard = (scene, entries = Leaderboard.sanitize(null), highlight = -1) => {
+  const parts = [addPanel(scene), label(scene, W / 2, BOARD.y + 24, 'MEJORES PAPAGAYEROS', 1, GOLD)];
   const rows = range(LEADERBOARD_SIZE, (i) => label(scene, W / 2, BOARD.y + 48 + i * BOARD.row, ''));
-  const fill = (entries, highlight = -1) =>
-    entries.forEach(({ name, score }, i) => {
-      const marked = i === highlight;
-      rows[i].setText(`${i + 1}. ${name}   ${score}`).setTint(marked ? PLAYER_COLORS[0] : CREAM);
-      if (marked) scene.tweens.add({ targets: rows[i], alpha: 0.3, duration: 260, yoyo: true, repeat: -1 });
+  const fill = (list) =>
+    list.forEach(({ name, score }, i) => {
+      rows[i].setText(`${i + 1}. ${name}   ${score}`).setTint(i === highlight ? PLAYER_COLORS[0] : CREAM);
+      if (i === highlight) scene.tweens.add({ targets: rows[i], alpha: 0.3, duration: 260, yoyo: true, repeat: -1 });
     });
-  fill(Leaderboard.sanitize(null));
-  return { container: scene.add.container(0, 0, [title, ...rows]), fill };
+  fill(entries);
+  return { container: scene.add.container(0, 0, [...parts, ...rows]), fill };
 };
 
 const addPanel = (scene) => panel(scene, BOARD.x, BOARD.y, BOARD.width, BOARD.height);
@@ -2432,7 +2390,7 @@ class DuelLoop {
         this.tick();
       }
     }
-    this.view.update(this.duel, frozen ? 0 : dt, this.duel.phase === 'verdict' ? ROUND.slowmo : 1);
+    this.view.update(this.duel, frozen ? 0 : dt);
   }
 
   tick() {
@@ -2450,8 +2408,9 @@ class DuelLoop {
 }
 
 // The attract demo: two CPU rivals fight for real behind the menu, and start over after each match.
-const ATTRACT = { levels: [2, 3], restartMs: 2500 };
+const ATTRACT = { levels: [3, 5], rules: 'vidas', restartMs: 2500 };
 const LOGO = { y: 84, size: 5 };
+const RULE_NAMES = ['TIEMPO', 'VIDAS'];
 
 class TitleScene extends Phaser.Scene {
   constructor() {
@@ -2464,10 +2423,10 @@ class TitleScene extends Phaser.Scene {
     this.startDemo();
     this.addLogo();
     label(this, W / 2, 168, 'DUELO DE PAPAGAYOS SOBRE CARACAS');
-    this.menu = new Menu(this, W / 2, 250, ['1 JUGADOR', '2 JUGADORES'], (index) =>
-      this.scene.start('Build', { mode: index === 0 ? 'solo' : 'versus' }),
+    // First how many players, then the match rules.
+    this.menu = new Menu(this, W / 2, 250, ['1 JUGADOR', '2 JUGADORES'], (players) =>
+      this.menu.ask(RULE_NAMES, (rule) => this.scene.start('Build', { mode: players ? 'versus' : 'solo', rules: RULES[rule] })),
     );
-    addPanel(this);
     this.board = addBoard(this);
     Leaderboard.load().then((entries) => this.board.container.active && this.board.fill(entries));
     this.pages = [this.addHelp(), this.board.container];
@@ -2477,9 +2436,9 @@ class TitleScene extends Phaser.Scene {
   }
 
   startDemo() {
-    this.view.reset();
+    this.view.flyers.forEach((flyer) => flyer.cheer(null, 0));
     const pilots = ATTRACT.levels.map((level, player) => new CpuPilot(level, player));
-    this.demo = new DuelLoop(createDuel(makeRng(Date.now())), pilots, this.view, ({ type }) => {
+    this.demo = new DuelLoop(createDuel(makeRng(Date.now()), ATTRACT.rules), pilots, this.view, ({ type }) => {
       if (type === 'over') this.time.delayedCall(ATTRACT.restartMs, () => this.startDemo());
     });
   }
@@ -2494,11 +2453,12 @@ class TitleScene extends Phaser.Scene {
   addHelp() {
     const y = BOARD.y;
     return this.add.container(0, 0, [
+      addPanel(this),
       label(this, W / 2, y + 24, 'CÓMO SE JUEGA', 1, GOLD),
       label(this, W / 2, y + 52, 'JOYSTICK: DIRIGIR · B2: RECOGER'),
       label(this, W / 2, y + 74, 'B1: JALAR · MANTÉN B1 EN LA CALMA'),
       label(this, W / 2, y + 96, 'SERRUCHA EL HILO RIVAL CON TU COLA', 1, PLAYER_COLORS[0]),
-      label(this, W / 2, y + 118, 'OJO: CABLES, CALMA Y ZAMUROS', 1, DIM),
+      label(this, W / 2, y + 118, 'AGARRA LAS CAJAS: SON PODERES', 1, DIM),
     ]);
   }
 
@@ -2515,10 +2475,10 @@ class TitleScene extends Phaser.Scene {
 
 /** Scenes over the living backdrop: input is drained on entry and idle time builds up while nobody presses. */
 class BackdropScene extends Phaser.Scene {
-  stage(day, looks, moods) {
+  stage(looks, moods) {
     Arcade.drain();
     this.idle = 0;
-    this.scenery = new Scenery(this, day, looks, moods);
+    this.scenery = new Scenery(this, looks, moods);
   }
 
   update(time, delta) {
@@ -2544,18 +2504,13 @@ const rowValue = (choice, row) => {
 const restingTail = (x, y, clock) =>
   range(TAIL.segments + 1, (i) => ({ x: x + sin(clock * 2 + i * 0.6) * i * 0.7, y: y + KITE.radius + i * TAIL.segment * 0.8 }));
 
-/** A kite with its tail floating at (x, y), as on the cards and the customisation screen. */
-const drawShowKite = (g, kite, x, y, scale, clock) => {
-  drawTail(g, { tail: restingTail(x, y, clock) }, kite.colors);
-  drawPapagayo(g, x, y, sin(clock * 1.5) * 0.1, scale, kite);
-};
-
 /** A large, standing avatar holding its kite string toward (kite.x, kite.y). */
 const drawPortrait = (g, look, { x, y, scale, side, mood, clock }, kite) => {
   const reach = scale * look.scale;
   const hand = { x: x + side * 14 * reach, y: y - 50 * reach };
   g.lineStyle(2, CREAM).lineBetween(hand.x, hand.y, kite.x, kite.y + 20);
-  drawShowKite(g, look.kite, kite.x, kite.y, 0.8, clock);
+  drawTail(g, { tail: restingTail(kite.x, kite.y, clock) }, look.kite.colors);
+  drawPapagayo(g, kite.x, kite.y, sin(clock * 1.5) * 0.1, 0.8, look.kite);
   drawAvatar(g, look, { x, y, scale, side, mood, expression: mood || 'focus', lift: 0, yank: 0, turn: clock * 2, clock, hand });
 };
 
@@ -2564,14 +2519,14 @@ class BuildScene extends BackdropScene {
     super('Build');
   }
 
-  init({ mode }) {
-    assign(this, { mode, clock: 0, touched: false, leaving: false });
+  init({ mode, rules }) {
+    assign(this, { mode, rules, clock: 0, touched: false, leaving: false });
   }
 
   create() {
     this.choices = sanitizeChoices(null);
     this.players = this.mode === 'solo' ? [0] : [0, 1];
-    this.stage(0.3, looksOf(lineup(this.mode, 0, this.choices)));
+    this.stage(looksOf(lineup(this.mode, 0, this.choices)));
     shine(label(this, W / 2, 46, 'ARMA TU PAPAGAYERO', 3), GOLD);
     this.columns = this.players.map((player) => this.addColumn(player, this.players.length === 1 ? W / 2 : 200 + player * 400));
     this.g = this.add.graphics();
@@ -2625,10 +2580,10 @@ class BuildScene extends BackdropScene {
   /** Everyone is ready: remember the looks and go on to the ladder (solo) or the duel (versus). */
   finish() {
     this.leaving = true;
-    const { choices, mode } = this;
+    const { choices, mode, rules } = this;
     AvatarStore.save(choices);
     this.time.delayedCall(BUILD.leaveMs, () =>
-      this.scene.start(mode === 'solo' ? 'Intro' : 'Duel', { mode, level: 0, total: 0, choices }),
+      this.scene.start(mode === 'solo' ? 'Intro' : 'Duel', { mode, rules, level: 0, total: 0, choices }),
     );
   }
 
@@ -2653,35 +2608,59 @@ class BuildScene extends BackdropScene {
   }
 }
 
-const INTRO_MS = 2800;
-const CARD = { left: 100, top: 150, width: 600, height: 280, textX: 480 };
+const INTRO_MS = 3200;
+// Names longer than `longName` letters drop to a smaller size to fit beside the portrait.
+const CARD = { left: 100, top: 150, width: 600, height: 280, textX: 480, land: 230, longName: 10 };
+// One landscape strip per rival's home, along the foot of the card: [ground colour, feature].
+const HOMES = [
+  [0x3a2240, 'ranchos'],
+  [0x3f6a3a, 'andes'],
+  [0xc89a5a, 'cardones'],
+  [0x2a7ab0, 'mar'],
+  [0x2a5a90, 'puente'],
+  [0x3a2240, 'ranchos'],
+];
 
-/** Ladder card before each solo duel: who the next rival is (with their look and kite) and the points so far. */
+/** The rival's home along the foot of the card: ranchos, snowy Andes, cardones, the sea or the lake bridge. */
+const drawHome = (g, level, left, bottom, width) => {
+  const [ground, feature] = HOMES[level];
+  const rng = makeRng(level + 1);
+  rect(g, ground, left, bottom - 24, width, 24);
+  for (let x = left + 10; x < left + width - 20; x += 28 + rng() * 20) {
+    const y = bottom - 24;
+    if (feature === 'ranchos') rect(g, RANCHOS[floor(rng() * RANCHOS.length)], x, y - 14, 18, 14);
+    else if (feature === 'andes') g.fillStyle(0x6a5a8a).fillTriangle(x - 20, y, x + 10, y - 60, x + 40, y).fillStyle(CREAM).fillTriangle(x + 2, y - 48, x + 10, y - 60, x + 18, y - 48);
+    else if (feature === 'cardones') rect(g, 0x3f7a3a, x, y - 40, 8, 40).fillRect(x - 10, y - 26, 10, 6).fillRect(x - 10, y - 34, 4, 10);
+    else if (feature === 'mar') rect(g, CREAM, x, y + 8, 12, 2);
+    else rect(g, 0xd8d0c0, x, y - 30, 4, 30).fillRect(x - 30, y - 12, 60, 4);
+  }
+};
+
+/** Ladder card before each solo duel: who the next rival is (look, kite, home, catchphrase) and the points so far. */
 class IntroScene extends BackdropScene {
   constructor() {
     super('Intro');
   }
 
-  init({ level, total, choices = DEFAULT_CHOICES }) {
-    assign(this, { level, total, choices, elapsed: 0, leaving: false });
+  init({ level, total, rules, choices = DEFAULT_CHOICES }) {
+    assign(this, { level, total, rules, choices, elapsed: 0, leaving: false });
   }
 
   create() {
     this.cast = lineup('solo', this.level, this.choices);
-    this.stage(0, looksOf(this.cast));
-    const { barrio, motto } = RIVALS[this.level];
-    const { name } = this.cast[1];
+    this.stage(looksOf(this.cast));
+    const { name, home, motto } = RIVALS[this.level];
     const { left, top, width, height, textX } = CARD;
     const card = this.add.container(0, 0, [
       panel(this, left, top, width, height),
       label(this, textX, top + 38, `RIVAL ${this.level + 1} DE ${RIVALS.length}`, 2, GOLD),
-      label(this, textX, top + 96, name, 3, PLAYER_COLORS[1]),
-      label(this, textX, top + 146, `DE ${barrio}`, 2),
-      label(this, textX, top + 184, motto, 1, DIM),
+      label(this, textX, top + 96, name, name.length > CARD.longName ? 2 : 3, PLAYER_COLORS[1]),
+      label(this, textX, top + 146, `DE ${home}`, 1),
+      label(this, textX, top + 184, motto, 1, GOLD),
       label(this, textX, top + 240, `PUNTOS ${this.total}`),
     ]);
     this.portrait = this.add.graphics();
-    card.add(this.portrait);
+    card.addAt(this.portrait, 1);
     this.tweens.add({ targets: card, alpha: { from: 0, to: 1 }, y: { from: 40, to: 0 }, duration: 420, ease: 'Back.easeOut' });
   }
 
@@ -2689,25 +2668,28 @@ class IntroScene extends BackdropScene {
     this.elapsed += delta;
     const clock = this.elapsed / 1000;
     const { left, top, height } = CARD;
+    const g = this.portrait.clear();
+    drawHome(g, this.level, left + 8, top + height - 8, CARD.land);
     // The rival looks up at its kite in the card's corner, away from the text.
     const pose = { x: left + 140, y: top + height - 16, scale: 1.9, side: -1, mood: null, clock };
-    drawPortrait(this.portrait.clear(), this.cast[1].look, pose, { x: left + 48, y: top + 56 });
+    drawPortrait(g, this.cast[1].look, pose, { x: left + 48, y: top + 56 });
     const skipped = presses.some((code) => MENU_CODES.confirm.includes(code));
     if (this.leaving || (!skipped && this.elapsed < INTRO_MS)) return;
     this.leaving = true;
-    this.scene.start('Duel', { mode: 'solo', level: this.level, total: this.total, choices: this.choices });
+    const { level, total, rules, choices } = this;
+    this.scene.start('Duel', { mode: 'solo', level, total, rules, choices });
   }
 }
 
-const RESULT_DELAY_MS = 900;
+const RESULT_DELAY_MS = 1200;
 
 class DuelScene extends Phaser.Scene {
   constructor() {
     super('Duel');
   }
 
-  init({ mode, level = 0, total = 0, choices = DEFAULT_CHOICES }) {
-    assign(this, { mode, level, total, choices, earned: 0, stats: createStats() });
+  init({ mode, rules, level = 0, total = 0, choices = DEFAULT_CHOICES }) {
+    assign(this, { mode, rules, level, total, choices, earned: 0, stats: createStats() });
   }
 
   create() {
@@ -2716,14 +2698,14 @@ class DuelScene extends Phaser.Scene {
     const cast = lineup(this.mode, this.level, this.choices);
     this.names = namesOf(cast);
     const pilots = [new HumanPilot(0), solo ? new CpuPilot(this.level, 1) : new HumanPilot(1)];
-    const view = new DuelView(this, this.names, looksOf(cast));
+    const view = new DuelView(this, this.names, looksOf(cast), this.rules);
     const lull = solo ? ladderLull(this.level) : LULLS.versus;
-    this.loop = new DuelLoop(createDuel(makeRng(Date.now()), lull), pilots, view, (event) => this.record(event));
+    this.loop = new DuelLoop(createDuel(makeRng(Date.now()), this.rules, lull), pilots, view, (event) => this.record(event));
   }
 
   record(event) {
     tally(this.stats, event);
-    if (event.type === 'point' && this.mode === 'solo') this.earned += pointScore(event, this.loop.duel.elapsed);
+    if (event.type === 'point' && this.mode === 'solo') this.earned += pointScore(event);
     if (event.type === 'over') this.time.delayedCall(RESULT_DELAY_MS, () => this.finish());
   }
 
@@ -2733,51 +2715,55 @@ class DuelScene extends Phaser.Scene {
   }
 
   finish() {
-    const { mode, level, names, stats, total, choices } = this;
-    const { winner, score, round } = this.loop.duel;
+    const { mode, rules, level, names, stats, total, choices } = this;
+    const { winner, score } = this.loop.duel;
     const earned = this.earned + (mode === 'solo' ? matchBonus(winner, score, level) : 0);
-    this.scene.start('Result', { mode, level, names, stats, winner, score: [...score], round, earned, total: total + earned, choices });
+    this.scene.start('Result', { mode, rules, level, names, stats, winner, score: [...score], earned, total: total + earned, choices });
   }
 }
 
 const RESULT_IDLE_MS = 25000;
-const OUTCOME_TITLES = { next: '¡GANASTE!', champion: '¡REY DEL CIELO DE CARACAS!', defeat: '¡TE GANARON!' };
+const INITIALS_IDLE_MS = 30000;
+const OUTCOME_TITLES = { next: '¡GANASTE!', champion: '¡REY DEL CIELO!', defeat: '¡TE GANARON!' };
 const STAT_ROWS = [
   ['CORTES', 'cuts'],
   ['CHOQUES', 'crashes'],
   ['JALONES', 'dashes'],
 ];
 const STAT_COLUMNS = [300, 500];
-const STATS_Y = 186;
+const STATS_Y = 166;
+const INITIALS = { length: 3, y: 420, gap: 64 };
 
+/**
+ * The end of a match: who won and the stats; then REVANCHA (versus), the next rival (solo win), or the
+ * leaderboard, with initials written right here when the total makes it.
+ */
 class ResultScene extends BackdropScene {
   constructor() {
     super('Result');
   }
 
   init(summary) {
-    assign(this, { summary, leaving: false });
+    assign(this, { summary, state: 'wait', letters: Array(INITIALS.length).fill('A'), cursor: 0 });
   }
 
   create() {
-    const { mode, level, winner, round, total, earned, choices = DEFAULT_CHOICES } = this.summary;
+    const { mode, level, winner, total, earned, choices = DEFAULT_CHOICES } = this.summary;
     this.outcome = mode === 'solo' ? ladderOutcome(winner, level) : 'versus';
-    const moods = [0, 1].map((player) => (player === winner ? 'win' : 'lose'));
-    this.stage(dayPhase(round), looksOf(lineup(mode, level, choices)), moods);
-    const champion = this.outcome === 'champion';
-    shine(label(this, W / 2, 96, this.title(), champion ? 2 : 3), PLAYER_COLORS[winner]);
-    label(this, W / 2, 146, this.subtitle(), 1, GOLD);
+    this.stage(looksOf(lineup(mode, level, choices)), [0, 1].map((player) => (player === winner ? 'win' : 'lose')));
+    shine(label(this, W / 2, 70, this.title(), 3), PLAYER_COLORS[winner]);
+    label(this, W / 2, 116, this.subtitle(), 1, GOLD);
     this.addStats();
     if (mode === 'versus') {
-      this.menu = new Menu(this, W / 2, 384, ['REVANCHA', 'MENÚ PRINCIPAL'], (index) =>
-        index === 0 ? this.leave('Duel', { mode, choices }) : this.leave('Title'),
+      this.state = 'menu';
+      this.menu = new Menu(this, W / 2, 360, ['REVANCHA', 'MENÚ PRINCIPAL'], (index) =>
+        index === 0 ? this.leave('Duel', this.summary) : this.leave('Title'),
       );
       return;
     }
-    label(this, W / 2, 364, `TOTAL ${total}  (+${earned})`, 2);
-    const prompt = label(this, W / 2, 440, this.outcome === 'next' ? 'PULSA START PARA SEGUIR' : 'PULSA START');
-    this.tweens.add({ targets: prompt, alpha: 0.3, duration: 500, yoyo: true, repeat: -1 });
-    if (this.outcome !== 'next') this.checkRecord(total);
+    label(this, W / 2, 334, `TOTAL ${total}  (+${earned})`, 2);
+    if (this.outcome === 'next') this.prompt('PULSA START PARA SEGUIR', 'next');
+    else Leaderboard.load().then((entries) => (Leaderboard.qualifies(entries, total) ? this.askInitials() : this.showBoard(entries)));
   }
 
   title() {
@@ -2787,11 +2773,8 @@ class ResultScene extends BackdropScene {
 
   subtitle() {
     const { level, names, score } = this.summary;
-    if (this.outcome === 'next') {
-      const { name, barrio } = RIVALS[level + 1];
-      return `PRÓXIMO RIVAL: ${name} · DE ${barrio}`;
-    }
-    if (this.outcome === 'champion') return `VENCISTE A LOS ${RIVALS.length} PAPAGAYEROS DE CARACAS`;
+    if (this.outcome === 'next') return `PRÓXIMO: ${RIVALS[level + 1].name} · DE ${RIVALS[level + 1].home}`;
+    if (this.outcome === 'champion') return `VENCISTE A LOS ${RIVALS.length} PAPAGAYEROS DE VENEZUELA`;
     if (this.outcome === 'defeat') return `${names[1]} SE QUEDA CON EL CIELO`;
     return `${score[0]} - ${score[1]}`;
   }
@@ -2800,128 +2783,90 @@ class ResultScene extends BackdropScene {
   addStats() {
     const { names, stats, score } = this.summary;
     const rows = [...STAT_ROWS.map(([title, key]) => [title, stats.map((player) => player[key])]), ['PUNTOS', score]];
-    panel(this, 190, STATS_Y - 12, 420, 148);
+    panel(this, 190, STATS_Y - 12, 420, 140);
     STAT_COLUMNS.forEach((x, player) => label(this, x, STATS_Y + 8, names[player], 1, PLAYER_COLORS[player]));
     rows.forEach(([title, values], i) => {
-      const y = STATS_Y + 38 + i * 24;
+      const y = STATS_Y + 36 + i * 22;
       label(this, W / 2, y, title, 1, DIM);
       STAT_COLUMNS.forEach((x, player) => label(this, x, y, String(values[player])));
     });
   }
 
-  /** Loads the board once; a qualifying total is announced and routed to the initials screen. */
-  checkRecord(total) {
-    this.next = Leaderboard.load().then((entries) => {
-      const qualifies = Leaderboard.qualifies(entries, total);
-      if (qualifies && !this.leaving) label(this, W / 2, 404, '¡NUEVO RÉCORD!', 2, PLAYER_COLORS[0]);
-      return qualifies ? 'Initials' : 'Title';
-    });
+  prompt(text, state) {
+    this.state = state;
+    const prompt = label(this, W / 2, 400, text);
+    this.tweens.add({ targets: prompt, alpha: 0.3, duration: 500, yoyo: true, repeat: -1 });
+  }
+
+  /** A qualifying total: three letters to write right below the stats. */
+  askInitials() {
+    if (!this.sys.isActive()) return;
+    this.state = 'initials';
+    this.idle = 0;
+    this.slots = this.letters.map((letter, i) => label(this, W / 2 + (i - 1) * INITIALS.gap, INITIALS.y, letter, 4));
+    this.caret = this.add.rectangle(0, INITIALS.y + 40, 44, 8, GOLD);
+    this.help = [
+      label(this, W / 2, 372, '¡NUEVO RÉCORD! ESCRIBE TUS INICIALES', 1, PLAYER_COLORS[0]),
+      label(this, W / 2, 486, 'JOYSTICK: LETRA Y POSICIÓN · B1: SIGUIENTE', 1, DIM),
+    ];
+    this.refresh();
+  }
+
+  showBoard(entries, rank) {
+    if (!this.sys.isActive()) return;
+    // The board gets its own idle time, even right after initials that timed out.
+    this.idle = 0;
+    addBoard(this, entries, rank);
+    this.prompt('PULSA START', 'board');
   }
 
   leave(key, data) {
-    this.leaving = true;
+    this.state = 'gone';
     this.scene.start(key, data);
   }
 
   proceed() {
-    const { level, total, choices } = this.summary;
-    if (this.outcome === 'next') {
-      this.leave('Intro', { level: level + 1, total, choices });
+    const { level, total, rules, choices } = this.summary;
+    if (this.outcome === 'next') this.leave('Intro', { level: level + 1, total, rules, choices });
+    else this.leave('Title');
+  }
+
+  step(presses) {
+    const { state } = this;
+    if (state === 'initials') {
+      presses.forEach((code) => this.write(code));
+      if (this.idle > INITIALS_IDLE_MS) this.submit();
       return;
     }
-    this.leaving = true;
-    this.next.then((key) => this.scene.start(key, { score: total, choices, level }));
+    if (state === 'menu') presses.forEach((code) => this.menu.handle(code));
+    else if ((state === 'next' || state === 'board') && presses.some((code) => MENU_CODES.confirm.includes(code))) this.proceed();
+    // Walking away abandons the ladder or the rematch.
+    if (this.state !== 'gone' && this.idle > RESULT_IDLE_MS) this.leave('Title');
   }
 
-  /** Walking away abandons the ladder or the rematch, but a finished solo run still gets its initials. */
-  timeout() {
-    if (this.outcome === 'next' || this.outcome === 'versus') this.leave('Title');
-    else this.proceed();
-  }
-
-  step(presses) {
-    if (this.leaving) return;
-    for (const code of presses) {
-      if (this.leaving) break;
-      if (this.menu) this.menu.handle(code);
-      else if (MENU_CODES.confirm.includes(code)) this.proceed();
+  write(code) {
+    if (this.state !== 'initials') return;
+    const step = (codes) => (codes.includes(code) ? 1 : 0);
+    const turn = step(MENU_CODES.up) - step(MENU_CODES.down);
+    if (turn) this.letters[this.cursor] = shiftLetter(this.letters[this.cursor], turn);
+    this.cursor = Phaser.Math.Clamp(this.cursor + step(MENU_CODES.right) - step(MENU_CODES.left), 0, INITIALS.length - 1);
+    if (MENU_CODES.confirm.includes(code)) {
+      if (this.cursor < INITIALS.length - 1) this.cursor += 1;
+      else this.submit();
     }
-    if (!this.leaving && this.idle > RESULT_IDLE_MS) this.timeout();
-  }
-}
-
-const INITIALS_LENGTH = 3;
-const INITIALS_IDLE_MS = 30000;
-const BOARD_SHOW_MS = 4500;
-const LETTER_GAP = 76;
-const LETTERS_Y = 250;
-
-/** Three-letter initials for a qualifying solo total; then its rank shows on the board. */
-class InitialsScene extends BackdropScene {
-  constructor() {
-    super('Initials');
-  }
-
-  init({ score, choices = DEFAULT_CHOICES, level = 0 }) {
-    assign(this, { score, choices, level, letters: Array(INITIALS_LENGTH).fill('A'), cursor: 0, done: false });
-  }
-
-  create() {
-    this.stage(0.5, looksOf(lineup('solo', this.level, this.choices)), ['win', null]);
-    shine(label(this, W / 2, 96, '¡NUEVO RÉCORD!', 3), PLAYER_COLORS[0]);
-    label(this, W / 2, 150, `PUNTOS ${this.score}`, 2, GOLD);
-    this.slots = this.letters.map((letter, i) => label(this, W / 2 + (i - 1) * LETTER_GAP, LETTERS_Y, letter, 5));
-    this.caret = this.add.rectangle(0, LETTERS_Y + 64, 56, 8, GOLD);
-    addPanel(this);
-    this.help = this.add.container(0, 0, [
-      label(this, W / 2, BOARD.y + 34, 'ESCRIBE TUS INICIALES', 1, GOLD),
-      label(this, W / 2, BOARD.y + 68, 'JOYSTICK: LETRA Y POSICIÓN'),
-      label(this, W / 2, BOARD.y + 98, 'B1 / START: SIGUIENTE', 1, DIM),
-    ]);
     this.refresh();
-  }
-
-  step(presses) {
-    if (this.done) return;
-    presses.forEach((code) => this.handle(code));
-    if (!this.done && this.idle > INITIALS_IDLE_MS) this.submit();
-  }
-
-  handle(code) {
-    if (this.done) return;
-    if (MENU_CODES.up.includes(code)) this.shift(1);
-    else if (MENU_CODES.down.includes(code)) this.shift(-1);
-    else if (MENU_CODES.left.includes(code)) this.move(-1);
-    else if (MENU_CODES.right.includes(code)) this.move(1);
-    else if (MENU_CODES.confirm.includes(code)) this.advance();
-    this.refresh();
-  }
-
-  shift(step) {
-    this.letters[this.cursor] = shiftLetter(this.letters[this.cursor], step);
-  }
-
-  move(step) {
-    this.cursor = Phaser.Math.Clamp(this.cursor + step, 0, INITIALS_LENGTH - 1);
-  }
-
-  advance() {
-    if (this.cursor < INITIALS_LENGTH - 1) this.cursor += 1;
-    else this.submit();
   }
 
   refresh() {
     this.slots.forEach((slot, i) => slot.setText(this.letters[i]).setTint(i === this.cursor ? GOLD : CREAM));
-    this.caret.setX(this.slots[this.cursor].x).setVisible(!this.done);
+    this.caret.setX(this.slots[this.cursor].x);
   }
 
   async submit() {
-    this.done = true;
-    this.refresh();
-    const { entries, rank } = await Leaderboard.record({ name: this.letters.join(''), score: this.score });
-    this.help.setVisible(false);
-    addBoard(this).fill(entries, rank);
-    this.time.delayedCall(BOARD_SHOW_MS, () => this.scene.start('Title'));
+    this.state = 'saving';
+    const { entries, rank } = await Leaderboard.record({ name: this.letters.join(''), score: this.summary.total });
+    [...this.slots, ...this.help, this.caret].forEach((part) => part.destroy());
+    this.showBoard(entries, rank);
   }
 }
 
@@ -2938,6 +2883,6 @@ new Phaser.Game({
   backgroundColor: INK,
   audio: { noAudio: true },
   scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
-  scene: [TitleScene, BuildScene, IntroScene, DuelScene, ResultScene, InitialsScene],
+  scene: [TitleScene, BuildScene, IntroScene, DuelScene, ResultScene],
 });
 })();
