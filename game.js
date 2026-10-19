@@ -279,7 +279,8 @@ const TAUT_SLACK = 4;
 // past its end). Holding B1 keeps that lift on while it drains the AIRE meter.
 const DASH = { burst: 200, lift: 400, tug: 0.15, tugWind: 1 };
 // AIRE meter (0-1): a press costs `press`, holding drains `drain`/s and flies the kite as if the wind blew at
-// least `wind`; released, it refills `refill`/s.
+// least `wind`; otherwise it refills `refill`/s. A hold that runs the meter dry lapses (it refills even with B1
+// still down) and lifts again once a press is affordable, so a held B1 never leaves the kite stranded.
 const AIR = { press: 0.35, drain: 1 / 0.9, refill: 1 / 1.5, wind: 0.75 };
 const STUN = 0.6;
 const IDLE_INPUT = { ax: 0, ay: 0, dash: false, hold: false, reel: false };
@@ -318,6 +319,7 @@ const createKite = (player) => {
     air: 1,
     tug: 0,
     holding: false,
+    dry: false,
     stun: 0,
     fray: 0,
     respawn: 0,
@@ -368,16 +370,23 @@ const canPull = (kite) => kite.air >= AIR.press;
 /** How a player who watches the meter holds B1: lets go when AIRE runs out, holds again once it allows a press. */
 const keepHolding = (wants, holding, kite) => wants && kite.air > 0 && (holding || canPull(kite));
 
-/** Holding B1 keeps the tug's lift on while AIRE lasts; released, the meter refills. TURBO keeps it full. */
+/** Holding B1 keeps the tug's lift on while AIRE lasts; otherwise the meter refills. TURBO keeps it full. */
 const holdLift = (kite, hold, dt) => {
-  kite.holding = hold && kite.air > 0;
+  if (!hold || canPull(kite)) kite.dry = false;
+  kite.holding = hold && kite.air > 0 && !kite.dry;
   if (kite.turbo) kite.air = 1;
-  else if (kite.holding) kite.air = max(0, kite.air - AIR.drain * dt);
-  else if (!hold) kite.air = min(1, kite.air + AIR.refill * dt);
+  else if (kite.holding) {
+    kite.air = max(0, kite.air - AIR.drain * dt);
+    kite.dry = !kite.air;
+  } else kite.air = min(1, kite.air + AIR.refill * dt);
 };
 
+/** The screen edges stop a kite dead: no speed is left pushing into them, so it never sticks there. */
 const keepOnScreen = (kite) => {
-  kite.x = min(W - KITE.radius, max(KITE.radius, kite.x));
+  const x = min(W - KITE.radius, max(KITE.radius, kite.x));
+  if (x !== kite.x) kite.vx = 0;
+  if (kite.y < KITE.radius) kite.vy = max(0, kite.vy);
+  kite.x = x;
   kite.y = max(KITE.radius, kite.y);
 };
 
@@ -774,12 +783,12 @@ const RIVAL_STATS = ['reaction', 'aim', 'dashRange', 'guard', 'nerve', 'foresigh
 const rival = (name, home, motto, stats) => ({ name, home, motto, ...Object.fromEntries(RIVAL_STATS.map((key, i) => [key, stats[i]])) });
 // The regional ladder, from a careful beginner from Catia to the old master of El Valle.
 const RIVALS = [
-  rival('EL CHAMO', 'CATIA, CARACAS', '¡QUÉ LO QUÉ, PANA!', [0.75, 100, 0, 0, 410, 0.7, 0.6, 0, 0.45, 0.1]),
-  rival('LA GOCHA', 'MÉRIDA', '¡AY, QUÉ FRÍO, MIJO!', [0.6, 80, 40, 0.15, 405, 0.5, 0.7, 25, 0.6, 0.2]),
-  rival('EL GUARO', 'BARQUISIMETO', '¡GUARO, TE VOY A CORTAR!', [0.47, 56, 70, 0.3, 420, 0.27, 0.8, 50, 0.68, 0.3]),
-  rival('LA MARGARITEÑA', 'MARGARITA', '¡AY, VALE, QUÉ BRISA!', [0.3, 30, 80, 0.4, 410, 0.25, 0.9, 60, 0.76, 0.4]),
-  rival('EL MARACUCHO', 'MARACAIBO', '¡QUÉ MOLLEJA DE PAPAGAYO!', [0.18, 22, 90, 0.45, 400, 0.2, 1, 75, 0.74, 0.5]),
-  rival('DON GOYO', 'EL VALLE, CARACAS', 'CUARENTA AÑOS CORTANDO PAPAGAYOS', [0.12, 18, 110, 0.75, 420, 0, 1, 70, 0.74, 0.6]),
+  rival('EL CHAMO', 'CATIA, CARACAS', '¡QUÉ LO QUÉ, PANA!', [0.75, 100, 0, 0, 410, 0.7, 0.6, 0, 0.62, 0.1]),
+  rival('LA GOCHA', 'MÉRIDA', '¡AY, QUÉ FRÍO, MIJO!', [0.6, 80, 40, 0.15, 405, 0.5, 0.7, 25, 0.76, 0.2]),
+  rival('EL GUARO', 'BARQUISIMETO', '¡GUARO, TE VOY A CORTAR!', [0.47, 45, 70, 0.3, 420, 0.27, 0.8, 50, 1, 0.3]),
+  rival('LA MARGARITEÑA', 'MARGARITA', '¡AY, VALE, QUÉ BRISA!', [0.3, 20, 80, 0.4, 410, 0.25, 0.9, 90, 1, 0.4]),
+  rival('EL MARACUCHO', 'MARACAIBO', '¡QUÉ MOLLEJA DE PAPAGAYO!', [0.14, 7, 90, 0.45, 400, 0.2, 1, 100, 1, 0.5]),
+  rival('DON GOYO', 'EL VALLE, CARACAS', 'CUARENTA AÑOS CORTANDO PAPAGAYOS', [0.1, 5, 110, 0.9, 420, 0, 1, 100, 1, 0.6]),
 ];
 // strikeAlong: where on the rival string to aim, as a fraction from its kite toward its anchor.
 const CPU = { strikeAlong: 0.25, floor: 390, threat: 90, deadzone: 10 };
@@ -1256,35 +1265,11 @@ const paintRidge = ({ color, shade, rim, base, peak, centre, spread, rough, land
 const RANCHOS = [0xc0603e, 0xd27d4e, 0xe8a85a, 0xd96a8a, 0x5aa0c8, 0x8bc06a, 0xe6d26a, 0xb07ac8];
 const RANCHO_ROOF = 0x5a3a4a;
 const CERROS = { reach: 175, rise: 78, foot: 246, ranchos: 230 };
-const LANDMARKS = { twins: [178, 192], twinTop: 150, tower: 246, towerTop: 140, color: 0x4a4066, brick: 0x9a4a3a, glass: 0x2a2440 };
+const DARK_GLASS = 0x2a2440;
 const CITY_DEPTH = 0.09;
 
 /** A window: dark glass, or already lit by a fixed pattern. */
-const pane = (ctx, x, y, w = 1, h = 1) => fill(ctx, (x * 7 + y * 13) % 9 ? LANDMARKS.glass : WINDOW_LIT, x, y, w, h);
-
-/** Parque Central's twin towers: ribbed concrete shafts with stepped crowns. */
-const paintTwins = (ctx) =>
-  LANDMARKS.twins.forEach((x) => {
-    const top = LANDMARKS.twinTop;
-    fill(ctx, LANDMARKS.color, x, top, 10, PH);
-    fill(ctx, LANDMARKS.color, x + 2, top - 3, 6, 3);
-    fill(ctx, INK, x + 4, top - 9, 1, 6);
-    for (let y = top + 3; y < CERROS.foot; y += 3) for (let px = x + 1; px < x + 9; px += 2) pane(ctx, px, y);
-  });
-
-/** The Torre de David: a tall unfinished tower with brick patches and its helipad roof. */
-const paintTorreDeDavid = (ctx, rng) => {
-  const x = LANDMARKS.tower;
-  const top = LANDMARKS.towerTop;
-  fill(ctx, LANDMARKS.color, x, top, 14, PH);
-  fill(ctx, INK, x - 3, top - 2, 20, 2);
-  for (let y = top + 3; y < CERROS.foot; y += 3) {
-    for (let px = x + 1; px < x + 13; px += 2) {
-      if (rng() < 0.3) fill(ctx, LANDMARKS.brick, px, y, 2, 2);
-      else pane(ctx, px, y);
-    }
-  }
-};
+const pane = (ctx, x, y, w = 1, h = 1) => fill(ctx, (x * 7 + y * 13) % 9 ? DARK_GLASS : WINDOW_LIT, x, y, w, h);
 
 /** A cerro on one edge of the valley, covered top to bottom in colourful ranchos. */
 const paintCerro = (ctx, rng, side) => {
@@ -1304,12 +1289,8 @@ const paintCerro = (ctx, rng, side) => {
     });
 };
 
-/** The mid-distance city: the two landmark towers and the cerros of ranchos framing them. */
-const paintCity = (ctx, rng) => {
-  paintTwins(ctx);
-  paintTorreDeDavid(ctx, rng);
-  [0, 1].forEach((side) => paintCerro(ctx, rng, side));
-};
+/** The mid-distance city: the cerros of ranchos on both sides, leaving El Ávila open in the middle. */
+const paintCity = (ctx, rng) => [0, 1].forEach((side) => paintCerro(ctx, rng, side));
 
 const POLE = { top: 223, bar: 27 };
 const CABLES = [-7, 0, 7];
@@ -1382,11 +1363,6 @@ const paintAzoteas = (ctx, rng) => {
 
 /** A tiny white square: sparks, glints and wind dust. */
 const paintPixel = (ctx) => fill(ctx, 0xffffff, 0, 0, 1, 1);
-
-const BLOOM = { size: 33, rings: [16, 11, 6], alpha: 0.3 };
-
-/** Stepped light rings for a burst of light (blended additively and tinted). */
-const paintBloom = (ctx) => BLOOM.rings.forEach((r) => disc(ctx, 0xffffff, BLOOM.size >> 1, BLOOM.size >> 1, r, BLOOM.alpha));
 
 // ---------------------------------------------------------------------------
 // 12. Backdrop (parallax layers)
@@ -1774,21 +1750,17 @@ const SPARKS = {
   emitting: false,
 };
 // Warm light and sparks for a cut, cold ones for the cables; each spark cools through its colours as it dies.
-const BURSTS = [0xffb060, 0x7fc4ff];
 const SPARK_COLORS = [
   [0xffffff, 0xffe08a, 0xff9a40],
   [0xffffff, 0xbfe9ff, 0x5ab0ff],
 ];
-const BURST = { from: 1.2, to: 10, alpha: 0.9, ms: 380, sparks: 45 };
+const BURST_SPARKS = 45;
 
-/** Pixel spark bursts and local blooms of light. */
+/** Pixel spark bursts. */
 class Fx {
   constructor(scene) {
     const spark = bake(scene, 'pixel', 1, 1, paintPixel);
     this.emitters = SPARK_COLORS.map((color) => scene.add.particles(0, 0, spark, { ...SPARKS, color }));
-    const bloom = bake(scene, 'bloom', BLOOM.size, BLOOM.size, paintBloom);
-    this.glows = BURSTS.map((color) => scene.add.image(0, 0, bloom).setTint(color).setBlendMode('ADD').setVisible(false));
-    this.animations = scene.tweens;
   }
 
   /** Pixel sparks of one kind (0 warm, 1 electric). */
@@ -1796,13 +1768,9 @@ class Fx {
     this.emitters[kind].explode(count, x, y);
   }
 
-  /** Sparks and a local bloom of light (warm for a cut, cold for the cables) instead of a full-screen flash. */
+  /** A big burst of sparks: warm for a cut, cold for the cables. */
   burst(kind, x, y) {
-    const glow = this.glows[kind];
-    this.sparks(BURST.sparks, x, y, kind);
-    this.animations.killTweensOf(glow);
-    glow.setPosition(x, y).setVisible(true).setScale(BURST.from).setAlpha(BURST.alpha);
-    this.animations.add({ targets: glow, scale: BURST.to, alpha: 0, duration: BURST.ms, ease: 'Quad.easeOut' });
+    this.sparks(BURST_SPARKS, x, y, kind);
   }
 }
 
@@ -1818,49 +1786,113 @@ const midiToHz = (midi) => 440 * 2 ** ((midi - 69) / 12);
 // A bright D major flourish for every point won, and a rising one for a power.
 const JINGLE = [62, 66, 69, 74];
 const POWER_UP = [69, 76, 81];
-// Each sound is a list of voices: [wave or 'noise', frequency, filter type, filter sweep from, to, gain, seconds, delay].
+// Each sound is a list of voices: [wave or 'noise', frequency, filter type, filter sweep from, to, gain, seconds,
+// delay, attack]. Every voice fades in over `attack` s, so nothing starts with a crack.
 const notes = (midis, gain) => midis.map((midi, i) => ['triangle', midiToHz(midi), 'lowpass', 3500, 900, gain, 0.4, i * 0.08]);
 const SOUNDS = {
-  whoosh: [['noise', 0, 'bandpass', 400, 2400, 0.35, 0.3]],
-  snap: [['noise', 0, 'highpass', 5000, 5000, 0.9, 0.07], ['sine', 90, 'lowpass', 400, 200, 0.5, 0.3]],
-  crackle: [['sawtooth', 55, 'lowpass', 4000, 300, 0.4, 0.5]],
+  // JALAR: wind swelling along the string, a soft band of noise rising in pitch.
+  whoosh: [['noise', 0, 'bandpass', 300, 1300, 0.3, 0.45, 0, 0.14]],
+  snap: [['noise', 0, 'highpass', 3000, 3000, 0.35, 0.08], ['sine', 90, 'lowpass', 400, 200, 0.4, 0.3]],
+  crackle: [['sawtooth', 55, 'lowpass', 2500, 300, 0.25, 0.5, 0, 0.02]],
   thud: [['sine', 70, 'lowpass', 300, 300, 0.5, 0.35]],
-  // Dull click for a JALAR pressed without enough AIRE.
-  refuse: [['square', 160, 'lowpass', 900, 900, 0.12, 0.07]],
   go: [['triangle', 880, 'lowpass', 4000, 4000, 0.2, 0.15]],
   jingle: notes(JINGLE, 0.3),
   power: notes(POWER_UP, 0.25),
 };
+const ATTACK = 0.006;
+// Joropo in D under the action: one 6/8 bar of six eighths per chord (I IV V7 I). The bass alternates 3/4 and 6/8
+// bars (sesquiáltera); the cuatro strums every eighth and chops the third of each beat ("chas"); maracas shake on
+// every eighth; the arpa walks the chord. `beat` is the eighth (s) per mood: a calm title, the duel, the hot end.
+const JOROPO = { roots: [50, 55, 57, 50], seventh: 2, beat: { calm: 0.16, duel: 0.145, hot: 0.125 }, level: 0.3, ahead: 0.3, every: 50 };
+const CHORD_TONES = [0, 4, 7, 12];
+const SEVENTH_TONES = [0, 4, 7, 10];
+const ARPA_WALK = [0, 1, 2, 3, 2, 1];
+const BASS_HITS = [[0, 2, 4], [0, 3]];
 
-/** Light synthesised SFX; silent without an AudioContext and never needed to play. */
+/** Light synthesised SFX and the joropo; silent without an AudioContext and never needed to play. */
 const createSfx = (ctx) => {
-  const master = ctx && ctx.createGain();
-  const noise = ctx && ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
-  if (ctx) {
-    master.gain.value = 0.5;
-    master.connect(ctx.destination);
-    const data = noise.getChannelData(0);
-    for (let i = 0; i < data.length; i += 1) data[i] = Math.random() * 2 - 1;
-    window.addEventListener('keydown', () => ctx.state === 'suspended' && ctx.resume());
-  }
+  if (!ctx) return { play() {}, music() {} };
+  const master = ctx.createGain();
+  const band = ctx.createGain();
+  const noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+  const strings = {};
+  master.gain.value = 0.5;
+  band.gain.value = 0;
+  master.connect(ctx.destination);
+  band.connect(master);
+  const data = noise.getChannelData(0);
+  for (let i = 0; i < data.length; i += 1) data[i] = Math.random() * 2 - 1;
+  window.addEventListener('keydown', () => ctx.state === 'suspended' && ctx.resume());
 
-  /** One voice through a sweeping filter and a decaying gain to the master bus. */
-  const voice = ([wave, frequency, type, from, to, gain, duration, delay = 0]) => {
-    const start = ctx.currentTime + delay;
+  /** One voice through a sweeping filter and a fading gain, at `start` (s, audio clock) into `out`. */
+  const voice = ([wave, frequency, type, from, to, gain, duration, delay = 0, attack = ATTACK], start = ctx.currentTime + delay, out = master) => {
     const source = wave === 'noise' ? assign(ctx.createBufferSource(), { buffer: noise }) : assign(ctx.createOscillator(), { type: wave });
     if (frequency) source.frequency.value = frequency;
     const filter = assign(ctx.createBiquadFilter(), { type });
     const amp = ctx.createGain();
     filter.frequency.setValueAtTime(from, start);
     filter.frequency.exponentialRampToValueAtTime(to, start + duration);
-    amp.gain.setValueAtTime(gain, start);
+    amp.gain.setValueAtTime(0.001, start);
+    amp.gain.exponentialRampToValueAtTime(gain, start + attack);
     amp.gain.exponentialRampToValueAtTime(0.001, start + duration);
-    source.connect(filter).connect(amp).connect(master);
+    source.connect(filter).connect(amp).connect(out);
     source.start(start);
     source.stop(start + duration);
   };
 
-  return { play: (name) => ctx && SOUNDS[name].forEach(voice) };
+  /** A plucked string (Karplus-Strong, rendered once per note), faded out over `length` s. */
+  const pluck = (midi, start, gain, length) => {
+    const hz = midiToHz(midi);
+    const period = round(ctx.sampleRate / hz);
+    if (!strings[midi]) {
+      const buffer = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+      const wave = buffer.getChannelData(0);
+      for (let i = 0; i < wave.length; i += 1) wave[i] = i < period ? Math.random() * 2 - 1 : 0.498 * (wave[i - period] + wave[i - period + 1]);
+      strings[midi] = buffer;
+    }
+    const source = assign(ctx.createBufferSource(), { buffer: strings[midi] });
+    source.playbackRate.value = (hz * (period + 0.5)) / ctx.sampleRate;
+    const amp = ctx.createGain();
+    amp.gain.setValueAtTime(gain, start);
+    amp.gain.linearRampToValueAtTime(0, start + length);
+    source.connect(amp).connect(band);
+    source.start(start);
+    source.stop(start + length);
+  };
+
+  /** One eighth of the joropo. */
+  const eighth = (count, start, mood) => {
+    const at = count % 6;
+    const bar = floor(count / 6) % JOROPO.roots.length;
+    const root = JOROPO.roots[bar];
+    const tones = bar === JOROPO.seventh ? SEVENTH_TONES : CHORD_TONES;
+    const downbeat = at % 3 === 0;
+    if (BASS_HITS[bar % 2].includes(at)) pluck(root - 12 + (at ? 7 : 0), start, 0.8, 0.5);
+    tones.forEach((tone, i) => pluck(root + tone, start + i * 0.012, downbeat ? 0.32 : 0.2, at % 3 === 2 ? 0.05 : 0.3));
+    voice(['noise', 0, 'highpass', 6000, 6000, downbeat ? 0.3 : 0.15, downbeat ? 0.09 : 0.04], start, band);
+    if (mood !== 'calm' || at % 2 === 0) pluck(root + 12 + tones[ARPA_WALK[at]] + (mood === 'hot' && at % 2 ? 12 : 0), start, 0.45, 0.8);
+  };
+
+  // A lookahead scheduler on the audio clock: one loop for the whole game, so moods switch without stacking.
+  let mood = null;
+  let count = 0;
+  let next = 0;
+  setInterval(() => {
+    if (!mood || ctx.state !== 'running') return;
+    next = max(next, ctx.currentTime + 0.05);
+    for (; next < ctx.currentTime + JOROPO.ahead; next += JOROPO.beat[mood]) eighth(count++, next, mood);
+  }, JOROPO.every);
+
+  return {
+    play: (name) => SOUNDS[name].forEach((spec) => voice(spec)),
+    /** 'calm', 'duel' or 'hot' plays the joropo in that mood (from its first bar when it was silent); null fades it out. */
+    music(name) {
+      if (name === mood) return;
+      if (!mood) count = 0;
+      mood = name;
+      band.gain.setTargetAtTime(name ? JOROPO.level : 0, ctx.currentTime, 0.05);
+    },
+  };
 };
 
 const sfx = createSfx(createAudioContext());
@@ -1919,7 +1951,7 @@ const SHOT = { shakeMs: 280, shake: 0.006, hitstop: 0.15 };
 const FOCUS_EASE = 2;
 // Without an AudioContext the SFX stay silent: the title's attract demo plays through this one.
 const SILENCE = createSfx(null);
-const EVENT_SOUNDS = { go: 'go', refused: 'refuse', dash: 'whoosh', power: 'power', shield: 'power' };
+const EVENT_SOUNDS = { go: 'go', dash: 'whoosh', power: 'power', shield: 'power' };
 
 /** Tints every letter from cream at the top into `color` at the bottom: chunky arcade banner type. */
 const shine = (text, color) => text.setTint(CREAM, CREAM, color, color);
@@ -2151,7 +2183,7 @@ class DuelView extends Scenery {
 // ---------------------------------------------------------------------------
 
 const MENU_GAP = 48;
-// Every menu screen shares a big heading near the top and a dim help line along the bottom.
+// Every menu screen shares a big heading near the top and a help line along the bottom.
 const SCREEN = { heading: 46, footer: 586 };
 
 /** Centred pixel-font text; `size` is how many screen pixels each font pixel takes (the font's size is its cell width). */
@@ -2161,8 +2193,8 @@ const label = (scene, x, y, text, size = 1, color = CREAM) =>
 /** The big golden heading of a menu screen. */
 const heading = (scene, text) => shine(label(scene, W / 2, SCREEN.heading, text, 3), GOLD);
 
-/** The dim help line at the bottom of a screen. */
-const footer = (scene, text) => label(scene, W / 2, SCREEN.footer, text, 1, DIM);
+/** The help line at the bottom of a screen (cream, so it reads over the dark rooftops). */
+const footer = (scene, text) => label(scene, W / 2, SCREEN.footer, text);
 
 /** A dark box with a double pixel border. */
 const panel = (scene, x, y, width, height) =>
@@ -2221,6 +2253,14 @@ class Menu {
 // ---------------------------------------------------------------------------
 // 17. Scenes
 // ---------------------------------------------------------------------------
+
+/** A scene class registered under `key`. */
+const keyed = (key, Base = Phaser.Scene) =>
+  class extends Base {
+    constructor() {
+      super(key);
+    }
+  };
 
 // The top-five panel: rows start `firstRow` px below its top; scores are right-aligned in `scoreWidth` characters.
 const BOARD = { x: 110, y: 420, width: 580, height: 146, firstRow: 48, row: 19, scoreWidth: 7 };
@@ -2299,7 +2339,7 @@ class DuelLoop {
     const inputs = this.pilots.map((pilot) => pilot.input(this.duel, this.pressed));
     this.pressed.clear();
     inputs.forEach(({ dash }, player) => {
-      if (dash && this.duel.phase === 'fly' && !canPull(this.duel.kites[player])) this.view.react({ type: 'refused', player });
+      if (dash && this.duel.phase === 'fly' && !canPull(this.duel.kites[player])) this.view.react({ type: 'refused', player }, this.duel);
     });
     for (const event of stepDuel(this.duel, inputs, DT)) {
       this.view.react(event, this.duel);
@@ -2329,13 +2369,10 @@ const addLogo = (scene) => {
   return container;
 };
 
-class TitleScene extends Phaser.Scene {
-  constructor() {
-    super('Title');
-  }
-
+class TitleScene extends keyed('Title') {
   create() {
     Arcade.drain();
+    sfx.music('calm');
     this.idle = 0;
     this.view = new DuelView(this, null, attractLooks());
     this.startDemo();
@@ -2410,13 +2447,10 @@ const track = (keys, t) => {
 };
 
 /** The attract cinematic on boot (and after an idle title), built from the duel's own pieces. */
-class OpeningScene extends Phaser.Scene {
-  constructor() {
-    super('Opening');
-  }
-
+class OpeningScene extends keyed('Opening') {
   create() {
     Arcade.drain();
+    sfx.music('calm');
     assign(this, { clock: 0, severed: false, logo: null });
     this.view = new DuelView(this, null, attractLooks());
     this.duel = createDuel(makeRng(OPENING.seed));
@@ -2488,10 +2522,12 @@ class OpeningScene extends Phaser.Scene {
   }
 }
 
-/** Scenes over the living backdrop: input is drained on entry and idle time builds up while nobody presses. */
+/** Menu scenes over the living backdrop (no music): input is drained on entry and idle time builds up while
+ * nobody presses. */
 class BackdropScene extends Phaser.Scene {
   stage(looks, moods) {
     Arcade.drain();
+    sfx.music(null);
     this.idle = 0;
     this.scenery = new Scenery(this, looks, moods);
   }
@@ -2558,11 +2594,7 @@ const drawControls = (scene, g, x, y, player) => {
   }
 };
 
-class HowToScene extends BackdropScene {
-  constructor() {
-    super('HowTo');
-  }
-
+class HowToScene extends keyed('HowTo', BackdropScene) {
   init({ mode, rules }) {
     assign(this, { setup: { mode, rules }, elapsed: 0, leaving: false });
   }
@@ -2625,11 +2657,7 @@ const drawPortrait = (g, look, { x, y, scale, side, mood, clock }, kite) => {
   drawAvatar(g, look, { x, y, scale, side, mood, expression: mood || 'focus', lift: 0, yank: 0, clock, hand });
 };
 
-class BuildScene extends BackdropScene {
-  constructor() {
-    super('Build');
-  }
-
+class BuildScene extends keyed('Build', BackdropScene) {
   init({ mode, rules }) {
     assign(this, { mode, rules, clock: 0, touched: false, leaving: false });
   }
@@ -2752,11 +2780,7 @@ const drawHome = (g, level, left, bottom, width) => {
 };
 
 /** Ladder card before each solo duel: who the next rival is (look, kite, home, catchphrase) and the points so far. */
-class IntroScene extends BackdropScene {
-  constructor() {
-    super('Intro');
-  }
-
+class IntroScene extends keyed('Intro', BackdropScene) {
   init({ level, total, rules, choices = DEFAULT_CHOICES }) {
     assign(this, { level, total, rules, choices, elapsed: 0, leaving: false });
   }
@@ -2766,17 +2790,13 @@ class IntroScene extends BackdropScene {
     this.stage(looksOf(this.cast));
     const { name, home, motto } = RIVALS[this.level];
     const { left, top, width, height, textX } = CARD;
-    const card = this.add.container(0, 0, [
-      panel(this, left, top, width, height),
-      label(this, textX, top + 38, `RIVAL ${this.level + 1} DE ${RIVALS.length}`, 2, GOLD),
-      label(this, textX, top + 96, name, name.length > CARD.longName ? 2 : 3, PLAYER_COLORS[1]),
-      label(this, textX, top + 146, `DE ${home}`, 1),
-      label(this, textX, top + 184, motto, 1, GOLD),
-      label(this, textX, top + 240, `PUNTOS ${this.total}`),
-    ]);
+    panel(this, left, top, width, height);
     this.portrait = this.add.graphics();
-    card.addAt(this.portrait, 1);
-    this.tweens.add({ targets: card, alpha: { from: 0, to: 1 }, y: { from: 40, to: 0 }, duration: 420, ease: 'Back.easeOut' });
+    label(this, textX, top + 38, `RIVAL ${this.level + 1} DE ${RIVALS.length}`, 2, GOLD);
+    label(this, textX, top + 96, name, name.length > CARD.longName ? 2 : 3, PLAYER_COLORS[1]);
+    label(this, textX, top + 146, `DE ${home}`, 1);
+    label(this, textX, top + 184, motto, 1, GOLD);
+    label(this, textX, top + 240, `PUNTOS ${this.total}`);
   }
 
   step(presses, delta) {
@@ -2798,17 +2818,14 @@ class IntroScene extends BackdropScene {
 
 const RESULT_DELAY_MS = 1200;
 
-class DuelScene extends Phaser.Scene {
-  constructor() {
-    super('Duel');
-  }
-
+class DuelScene extends keyed('Duel') {
   init({ mode, rules, level = 0, total = 0, choices = DEFAULT_CHOICES }) {
     assign(this, { mode, rules, level, total, choices, earned: 0, stats: createStats() });
   }
 
   create() {
     Arcade.drain();
+    sfx.music('duel');
     const solo = this.mode === 'solo';
     const cast = lineup(this.mode, this.level, this.choices);
     this.names = namesOf(cast);
@@ -2821,6 +2838,8 @@ class DuelScene extends Phaser.Scene {
   record(event) {
     tally(this.stats, event);
     if (event.type === 'point' && this.mode === 'solo') this.earned += pointScore(event);
+    // The band speeds up for the last seconds and the sudden death.
+    if (event.type === 'double' || event.type === 'sudden') sfx.music('hot');
     if (event.type === 'over') this.time.delayedCall(RESULT_DELAY_MS, () => this.finish());
   }
 
@@ -2847,18 +2866,14 @@ const STAT_ROWS = [
 ];
 const STAT_COLUMNS = [300, 500];
 // Result screen rows, top to bottom (y); the stats table spans `statsWidth` px and its rows are `statRow` apart.
-const RESULT = { title: 70, subtitle: 116, stats: 166, statsWidth: 420, statRow: 22, total: 334, menu: 360, record: 372, prompt: 400, help: 486 };
+const RESULT = { title: 70, subtitle: 116, stats: 166, statsWidth: 420, statRow: 22, total: 334, menu: 360, record: 372, prompt: 386, help: 486 };
 const INITIALS = { length: 3, y: 420, gap: 64 };
 
 /**
  * The end of a match: who won and the stats; then REVANCHA (versus), the next rival (solo win), or the
  * leaderboard, with initials written right here when the total makes it.
  */
-class ResultScene extends BackdropScene {
-  constructor() {
-    super('Result');
-  }
-
+class ResultScene extends keyed('Result', BackdropScene) {
   init(summary) {
     assign(this, { summary, state: 'wait', letters: Array(INITIALS.length).fill('A'), cursor: 0 });
   }
@@ -2923,7 +2938,7 @@ class ResultScene extends BackdropScene {
     this.caret = this.add.rectangle(0, INITIALS.y + 40, 44, 8, GOLD);
     this.help = [
       label(this, W / 2, RESULT.record, '¡NUEVO RÉCORD! ESCRIBE TUS INICIALES', 1, PLAYER_COLORS[0]),
-      label(this, W / 2, RESULT.help, 'JOYSTICK: LETRA · B1: SIGUIENTE', 1, DIM),
+      label(this, W / 2, RESULT.help, 'JOYSTICK: LETRA · B1: SIGUIENTE'),
     ];
     this.refresh();
   }
