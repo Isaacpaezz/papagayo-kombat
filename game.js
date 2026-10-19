@@ -916,7 +916,7 @@ const shiftLetter = (letter, step) =>
 
 const SKINS = [0xf3cfa6, 0xd9a173, 0xa8693f, 0x6b4126];
 const SHIRTS = [0xffd23f, 0x3fd2ff, 0xe8432e, 0x2fbf71, 0xe83e9b, 0xf2f2f2];
-const HAIR_TONES = { dark: 0x2b1a12, blond: 0xf2c14e, white: 0xeeeae2 };
+const HAIR_TONES = { dark: 0x2b1a12, white: 0xeeeae2 };
 // Bodies: 0 chamo, 1 chama, 2 señor (rival only). Hair styles are indices into HAIR_PAINTERS; the first two
 // belong to chamos, the next two to chamas, and the rest are the rivals' own.
 const BODY_NAMES = ['CHAMO', 'CHAMA'];
@@ -1545,7 +1545,11 @@ const hairCap = (g, { x, y }, tone) => g.fillStyle(tone).fillEllipse(x, y - 5, 2
 const HAIR_PAINTERS = [
   (g, h, s, tone) => hairCap(g, h, tone).fillRect(h.x - s * 10 - 1.5, h.y - 6, 3, 7),
   (g, h, s, tone, dye) => g.fillStyle(dye(HEADGEAR.cap)).fillEllipse(h.x, h.y - 5, 23, 13).fillRect(min(h.x - s * 8, h.x - s * 18), h.y - 7, 10, 3),
-  (g, h, s, tone, dye, clock) => hairCap(g, h, tone).fillEllipse(h.x - s * 13, h.y + 1 + sin(clock * 4) * 2, 8, 17).fillStyle(dye(HEADGEAR.cap)).fillCircle(h.x - s * 10, h.y - 5, 2.5),
+  (g, h, s, tone, dye, clock) =>
+    hairCap(g, h, tone)
+      .fillEllipse(h.x - s * 13, h.y + 1 + sin(clock * 4) * 2, 8, 17)
+      .fillStyle(dye(HEADGEAR.cap))
+      .fillCircle(h.x - s * 10, h.y - 5, 2.5),
   (g, h, s, tone) => hairCap(g, h, tone).fillCircle(h.x - s * 2, h.y - 13, 6),
   // LA GOCHA: a striped ruana over the shoulders and a wool hat with a pompom.
   (g, h, s, tone, dye) => {
@@ -1556,7 +1560,11 @@ const HAIR_PAINTERS = [
   // EL GUARO: a mop of curls.
   (g, h, s, tone) => [-8, -4, 0, 4, 8, -5, 2].forEach((ox, i) => g.fillStyle(tone).fillCircle(h.x + ox, h.y - (i < 5 ? 6 : 11), 5)),
   // LA MARGARITEÑA: long hair down her back with a flower.
-  (g, h, s, tone, dye) => hairCap(g, h, tone).fillRect(min(h.x - s * 3, h.x - s * 13), h.y - 6, 10, 24).fillStyle(dye(HEADGEAR.flower)).fillCircle(h.x - s * 7, h.y - 8, 3.5),
+  (g, h, s, tone, dye) =>
+    hairCap(g, h, tone)
+      .fillRect(min(h.x - s * 3, h.x - s * 13), h.y - 6, 10, 24)
+      .fillStyle(dye(HEADGEAR.flower))
+      .fillCircle(h.x - s * 7, h.y - 8, 3.5),
   // EL MARACUCHO: spiky hair.
   (g, h, s, tone) => {
     [-7, -2, 3, 8].forEach((ox) => g.fillStyle(tone).fillTriangle(h.x + ox - 4, h.y - 6, h.x + ox + 4, h.y - 6, h.x + ox - s * 2, h.y - 15));
@@ -1861,7 +1869,7 @@ const sfx = createSfx(createAudioContext());
 // 15. Duel view & HUD
 // ---------------------------------------------------------------------------
 
-const HUD = { margin: 24, nameY: 24, scoreY: 56, pipGap: 30, meterY: 84, meterW: 120, meterH: 10, powerY: 104, clockY: 30 };
+const HUD = { margin: 24, nameY: 24, scoreY: 56, pipGap: 30, pipScale: 0.36, meterY: 84, meterW: 120, meterH: 10, powerY: 104, clockY: 30 };
 const CUES = {
   viene: { text: '¡SE VIENE LA CALMA!', color: DIM },
   calma: { text: '¡CALMA! · JALA PARA SUBIR', color: CREAM },
@@ -1967,7 +1975,8 @@ class Hud {
     const kind = coming ? 'viene' : windCue(duel);
     const cue = duel.phase === 'fly' && CUES[kind === 'calma' && duel.elapsed < MATCH.hint ? 'primera' : kind];
     if (duel.phase === 'countdown') {
-      this.show(String(ceil((duel.clock / MATCH.countdown) * COUNTDOWN_STEPS)), duel.rules === 'tiempo' ? 'MÁS PUNTOS EN 1:30' : `${MATCH.lives} PAPAGAYOS CADA UNO`, GOLD);
+      const goal = duel.rules === 'tiempo' ? `MÁS PUNTOS EN ${clockText(MATCH.time)}` : `${MATCH.lives} PAPAGAYOS CADA UNO`;
+      this.show(String(ceil((duel.clock / MATCH.countdown) * COUNTDOWN_STEPS)), goal, GOLD);
     } else if (shout) this.show(shout.text, shout.detail, shout.color);
     else if (cue) {
       // A wind cue is smaller and blinks.
@@ -1982,7 +1991,11 @@ class Hud {
     const left = this.left(player);
     const refused = this.clock - this.refusedAt[player] < REFUSE_S;
     if (duel.rules === 'tiempo') this.scores[player].setText(String(duel.score[player]));
-    else for (let pip = 0; pip < MATCH.lives; pip += 1) drawPapagayo(g, left + 10 + pip * HUD.pipGap, HUD.scoreY, 0, 0.36, this.kites[player], pip < duel.lives[player]);
+    else {
+      for (let pip = 0; pip < MATCH.lives; pip += 1) {
+        drawPapagayo(g, left + 10 + pip * HUD.pipGap, HUD.scoreY, 0, HUD.pipScale, this.kites[player], pip < duel.lives[player]);
+      }
+    }
     const ready = canPull(kite);
     rect(g, INK, left - 4, HUD.meterY - 4, HUD.meterW + 8, HUD.meterH + 8);
     rect(g, refused ? DANGER : ready ? PLAYER_COLORS[player] : DIM, left, HUD.meterY, floor((HUD.meterW * kite.air) / PIXEL) * PIXEL, HUD.meterH);
@@ -2138,10 +2151,18 @@ class DuelView extends Scenery {
 // ---------------------------------------------------------------------------
 
 const MENU_GAP = 48;
+// Every menu screen shares a big heading near the top and a dim help line along the bottom.
+const SCREEN = { heading: 46, footer: 586 };
 
 /** Centred pixel-font text; `size` is how many screen pixels each font pixel takes (the font's size is its cell width). */
 const label = (scene, x, y, text, size = 1, color = CREAM) =>
   scene.add.bitmapText(x, y, FONT.key, text, FONT.cell * PIXEL * size).setOrigin(0.5).setTint(color);
+
+/** The big golden heading of a menu screen. */
+const heading = (scene, text) => shine(label(scene, W / 2, SCREEN.heading, text, 3), GOLD);
+
+/** The dim help line at the bottom of a screen. */
+const footer = (scene, text) => label(scene, W / 2, SCREEN.footer, text, 1, DIM);
 
 /** A dark box with a double pixel border. */
 const panel = (scene, x, y, width, height) =>
@@ -2201,16 +2222,17 @@ class Menu {
 // 17. Scenes
 // ---------------------------------------------------------------------------
 
-const BOARD = { x: 110, y: 436, width: 580, height: 136, row: 19 };
+// The top-five panel: rows start `firstRow` px below its top; scores are right-aligned in `scoreWidth` characters.
+const BOARD = { x: 110, y: 420, width: 580, height: 146, firstRow: 48, row: 19, scoreWidth: 7 };
 
 /** Top-five table in the bottom panel; returns fill(), which repaints it and can highlight one rank. */
 const addBoard = (scene, entries = Leaderboard.sanitize(null), highlight = -1) => {
   panel(scene, BOARD.x, BOARD.y, BOARD.width, BOARD.height);
   label(scene, W / 2, BOARD.y + 24, 'MEJORES PAPAGAYEROS', 1, GOLD);
-  const rows = range(LEADERBOARD_SIZE, (i) => label(scene, W / 2, BOARD.y + 48 + i * BOARD.row, ''));
+  const rows = range(LEADERBOARD_SIZE, (i) => label(scene, W / 2, BOARD.y + BOARD.firstRow + i * BOARD.row, ''));
   const fill = (list) =>
     list.forEach(({ name, score }, i) => {
-      rows[i].setText(`${i + 1}. ${name}   ${score}`).setTint(i === highlight ? PLAYER_COLORS[0] : CREAM);
+      rows[i].setText(`${i + 1}. ${name} ${String(score).padStart(BOARD.scoreWidth)}`).setTint(i === highlight ? PLAYER_COLORS[0] : CREAM);
       if (i === highlight) scene.tweens.add({ targets: rows[i], alpha: 0.3, duration: 260, yoyo: true, repeat: -1 });
     });
   fill(entries);
@@ -2292,6 +2314,8 @@ class DuelLoop {
 const ATTRACT = { levels: [3, 5], rules: 'vidas', restartMs: 2500, idleMs: 30000, spar: { aggression: 1, guard: 0, pace: 1, stroke: 90 } };
 const LOGO = { y: 84, size: 5, sway: 0.04, swayMs: 1800 };
 const RULE_NAMES = ['TIEMPO', 'VIDAS'];
+// The title menu sits on a dark backing so the demo kites flying behind it never hide its text.
+const TITLE_MENU = { y: 250, backing: { x: 200, y: 214, width: 400, height: 120 } };
 const attractLooks = () => ATTRACT.levels.map((level) => RIVAL_LOOKS[level]);
 
 /** The ¡HOJILLAZO! logo: warm chunky letters with a hard drop shadow over GUERRA DE PAPAGAYOS, swaying like a kite. */
@@ -2300,7 +2324,8 @@ const addLogo = (scene) => {
   shine(logo, 0xff7a2f);
   const subtitle = shine(label(scene, 0, LOGO.y, 'GUERRA DE PAPAGAYOS', 2), GOLD);
   const container = scene.add.container(W / 2, LOGO.y, [shadow, logo, subtitle]);
-  scene.tweens.add({ targets: container, rotation: { from: -LOGO.sway, to: LOGO.sway }, duration: LOGO.swayMs, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+  const sway = { from: -LOGO.sway, to: LOGO.sway };
+  scene.tweens.add({ targets: container, rotation: sway, duration: LOGO.swayMs, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
   return container;
 };
 
@@ -2315,13 +2340,15 @@ class TitleScene extends Phaser.Scene {
     this.view = new DuelView(this, null, attractLooks());
     this.startDemo();
     addLogo(this);
+    const { x, y, width, height } = TITLE_MENU.backing;
+    panel(this, x, y, width, height);
     // First how many players, then the match rules.
-    this.menu = new Menu(this, W / 2, 250, ['1 JUGADOR', '2 JUGADORES'], (players) =>
+    this.menu = new Menu(this, W / 2, TITLE_MENU.y, ['1 JUGADOR', '2 JUGADORES'], (players) =>
       this.menu.ask(RULE_NAMES, (rule) => this.scene.start('HowTo', { mode: players ? 'versus' : 'solo', rules: RULES[rule] })),
     );
     const fill = addBoard(this);
     Leaderboard.load().then((entries) => this.sys.isActive() && fill(entries));
-    label(this, W / 2, 586, 'PLATANUS HACK 26 · CARACAS', 1, DIM);
+    footer(this, 'PLATANUS HACK 26 · CARACAS');
   }
 
   startDemo() {
@@ -2342,12 +2369,30 @@ class TitleScene extends Phaser.Scene {
 }
 
 // The opening, in seconds: fade in on the sun and pull back over Caracas; the kid launches, the rival rises, the
-// kid saws across its string until it snaps; then the logo slams in where the title shows it. Any button skips.
-const OPENING = { fadeMs: 1200, pull: 2.4, launch: 2.2, rival: 3.2, saw: 4.8, cut: 6.2, slam: 7, end: 9.2, stroke: 45, strokeRate: 10, seed: 26 };
+// kid saws across its string (fraying it up to `fray` of its toughness) until it snaps; then the logo slams in,
+// `slamScale` times bigger, where the title shows it. Any button skips.
+const OPENING = {
+  fadeMs: 1200,
+  pull: 2.4,
+  launch: 2.2,
+  climb: 1.4,
+  rival: 3.2,
+  saw: 4.8,
+  cut: 6.2,
+  slam: 7,
+  end: 9.2,
+  stroke: 45,
+  strokeRate: 10,
+  fray: 0.9,
+  slamScale: 4,
+  slamMs: 280,
+  slamSparks: 60,
+  seed: 26,
+};
 // Kite paths as [second, x, y] keys: the kid's kite climbs and swoops onto the rival string; the rival's climbs and holds.
 const OPENING_PATHS = [
-  [[OPENING.launch, 170, 500], [OPENING.launch + 1.4, 280, 230], [OPENING.saw, 523, 217], [OPENING.slam, 440, 170]],
-  [[OPENING.rival, 630, 500], [OPENING.rival + 1.4, 380, 170]],
+  [[OPENING.launch, 170, 500], [OPENING.launch + OPENING.climb, 280, 230], [OPENING.saw, 523, 217], [OPENING.slam, 470, 260]],
+  [[OPENING.rival, 630, 500], [OPENING.rival + OPENING.climb, 380, 170]],
 ];
 
 /** Position along [second, x, y] keys at time t, eased in and out between keys and held at both ends. */
@@ -2379,8 +2424,14 @@ class OpeningScene extends Phaser.Scene {
       assign(kite, track(OPENING_PATHS[player], 0));
       hangTail(kite);
     });
+    // Starts close on the sun (a little toward the city), then pulls back to the pixel view.
     const pull = OPENING.pull * 1000;
-    this.cameras.main.setZoom(1).centerOn(SUN.x + 80, SUN.y).fadeIn(OPENING.fadeMs).pan(W / 2, H / 2, pull, 'Sine.easeInOut').zoomTo(1 / PIXEL, pull, 'Sine.easeInOut');
+    this.cameras.main
+      .setZoom(1)
+      .centerOn(SUN.x + 80, SUN.y)
+      .fadeIn(OPENING.fadeMs)
+      .pan(W / 2, H / 2, pull, 'Sine.easeInOut')
+      .zoomTo(1 / PIXEL, pull, 'Sine.easeInOut');
   }
 
   update(time, delta) {
@@ -2395,7 +2446,7 @@ class OpeningScene extends Phaser.Scene {
     if (this.severed) stepKite(rival, IDLE_INPUT, weather, dt);
     else {
       this.fly(rival, OPENING_PATHS[1], 0, weather, dt);
-      rival.fray = FRAY.toughness * 0.9 * clamp01((clock - OPENING.saw) / (OPENING.cut - OPENING.saw));
+      rival.fray = FRAY.toughness * OPENING.fray * clamp01((clock - OPENING.saw) / (OPENING.cut - OPENING.saw));
     }
     if (clock >= OPENING.cut && !this.severed) this.cut();
     if (clock >= OPENING.slam && !this.logo) this.slam();
@@ -2422,16 +2473,16 @@ class OpeningScene extends Phaser.Scene {
 
   /** The logo drops in from huge and lands with a shake and a shower of sparks. */
   slam() {
-    this.logo = addLogo(this).setScale(4).setAlpha(0);
+    this.logo = addLogo(this).setScale(OPENING.slamScale).setAlpha(0);
     this.tweens.add({
       targets: this.logo,
       scale: 1,
       alpha: 1,
-      duration: 280,
+      duration: OPENING.slamMs,
       ease: 'Quad.easeIn',
       onComplete: () => {
         this.cameras.main.shake(SHOT.shakeMs, SHOT.shake * 2);
-        this.view.fx.sparks(60, W / 2, LOGO.y + 30);
+        this.view.fx.sparks(OPENING.slamSparks, W / 2, LOGO.y);
       },
     });
   }
@@ -2454,10 +2505,26 @@ class BackdropScene extends Phaser.Scene {
 }
 
 // CÓMO JUGAR: shown after choosing the rules, before building the papagayero; B1/START or `ms` moves on.
-const HOWTO = { ms: 8000, cabinetY: 180, legendY: 312, lineGap: 42, goalY: 432, powersY: 470, powerGap: 170 };
+// `margin`/`top`/`height` frame the panel; in versus the two cabinets sit at `columns` (x).
+const HOWTO = {
+  ms: 8000,
+  margin: 30,
+  top: 80,
+  height: 482,
+  columns: [210, 590],
+  cabinetY: 180,
+  legendY: 312,
+  lineGap: 42,
+  goalY: 432,
+  powersY: 470,
+  powerGap: 170,
+};
 // One player's half of the cabinet: the joystick, then two rows of three numbered buttons (the bottom row is
-// unused). The real button colours are unknown, so they are drawn neutral and always named by number.
-const PANEL = { width: 300, height: 160, plate: 0x3a2a50, stick: -95, buttons: -15, gap: 58, row: 58, radius: 20, cap: 0xe4dccf };
+// unused). The real button colours are unknown, so they are drawn neutral and always named by number. x offsets
+// are from the panel centre, y offsets from the top button row; key hints sit `hint` px above their control.
+const PANEL = { width: 300, height: 160, top: -60, plate: 0x3a2a50, cap: 0xe4dccf, hint: -42 };
+const JOYSTICK = { x: -95, base: 40, baseR: 30, ball: 4, ballR: 15, shaft: 4 };
+const BUTTONS = { x: -15, gap: 58, row: 58, radius: 20, ring: 6, used: 2, unusedAlpha: 0.4 };
 // Keyboard keys for web players, per player: joystick, B1, B2.
 const KEY_HINTS = [
   ['WASD', 'U', 'I'],
@@ -2471,21 +2538,22 @@ const POWER_WORDS = ['CORTA', 'RÁPIDO', 'ESCUDO', 'ATACA'];
 const drawControls = (scene, g, x, y, player) => {
   const color = PLAYER_COLORS[player];
   const [stickKeys, ...buttonKeys] = KEY_HINTS[player];
-  const stick = x + PANEL.stick;
-  rect(g, PANEL.plate, x - PANEL.width / 2, y - 60, PANEL.width, PANEL.height);
-  g.fillStyle(INK).fillCircle(stick, y + 40, 30).fillStyle(PANEL.plate).fillCircle(stick, y + 40, 24);
-  rect(g, INK, stick - 4, y + 4, 8, 36);
-  g.fillStyle(INK).fillCircle(stick, y + 4, 17).fillStyle(PANEL.cap).fillCircle(stick, y + 4, 13);
-  label(scene, stick, y - 42, stickKeys, 1, color);
+  const sx = x + JOYSTICK.x;
+  const [base, ball] = [y + JOYSTICK.base, y + JOYSTICK.ball];
+  rect(g, PANEL.plate, x - PANEL.width / 2, y + PANEL.top, PANEL.width, PANEL.height);
+  g.fillStyle(INK).fillCircle(sx, base, JOYSTICK.baseR).fillStyle(PANEL.plate).fillCircle(sx, base, JOYSTICK.baseR - 6);
+  rect(g, INK, sx - JOYSTICK.shaft, ball, JOYSTICK.shaft * 2, base - ball);
+  g.fillStyle(INK).fillCircle(sx, ball, JOYSTICK.ballR + 2).fillStyle(PANEL.cap).fillCircle(sx, ball, JOYSTICK.ballR - 2);
+  label(scene, sx, y + PANEL.hint, stickKeys, 1, color);
   for (let i = 0; i < 6; i += 1) {
-    const bx = x + PANEL.buttons + (i % 3) * PANEL.gap;
-    const by = y + floor(i / 3) * PANEL.row;
-    const alpha = i < 3 ? 1 : 0.4;
-    if (i < 2) {
-      g.lineStyle(4, color).strokeCircle(bx, by, PANEL.radius + 6);
-      label(scene, bx, by - 42, buttonKeys[i], 1, color);
+    const bx = x + BUTTONS.x + (i % 3) * BUTTONS.gap;
+    const by = y + floor(i / 3) * BUTTONS.row;
+    const alpha = i < 3 ? 1 : BUTTONS.unusedAlpha;
+    if (i < BUTTONS.used) {
+      g.lineStyle(4, color).strokeCircle(bx, by, BUTTONS.radius + BUTTONS.ring);
+      label(scene, bx, by + PANEL.hint, buttonKeys[i], 1, color);
     }
-    g.fillStyle(INK, alpha).fillCircle(bx, by, PANEL.radius + 2).fillStyle(PANEL.cap, alpha).fillCircle(bx, by, PANEL.radius);
+    g.fillStyle(INK, alpha).fillCircle(bx, by, BUTTONS.radius + 2).fillStyle(PANEL.cap, alpha).fillCircle(bx, by, BUTTONS.radius);
     label(scene, bx, by, String(i + 1), 1, INK).setAlpha(alpha);
   }
 };
@@ -2503,11 +2571,11 @@ class HowToScene extends BackdropScene {
     const { mode } = this.setup;
     const players = mode === 'solo' ? [0] : [0, 1];
     this.stage(looksOf(lineup(mode, 0, DEFAULT_CHOICES)));
-    panel(this, 30, 80, W - 60, 482);
-    shine(label(this, W / 2, 46, 'CÓMO JUGAR', 3), GOLD);
+    panel(this, HOWTO.margin, HOWTO.top, W - 2 * HOWTO.margin, HOWTO.height);
+    heading(this, 'CÓMO JUGAR');
     const g = this.add.graphics();
     players.forEach((player) => {
-      const x = players.length > 1 ? 210 + player * 380 : W / 2;
+      const x = players.length > 1 ? HOWTO.columns[player] : W / 2;
       label(this, x, HOWTO.cabinetY - 80, `JUGADOR ${player + 1}`, 1, PLAYER_COLORS[player]);
       drawControls(this, g, x, HOWTO.cabinetY, player);
     });
@@ -2519,7 +2587,7 @@ class HowToScene extends BackdropScene {
       label(this, x, HOWTO.powersY + 36, kind.toUpperCase(), 1, GLASS);
       label(this, x, HOWTO.powersY + 56, POWER_WORDS[i]);
     });
-    label(this, W / 2, 586, 'B1 / START: ¡VAMOS!', 1, DIM);
+    footer(this, 'B1 / START: ¡VAMOS!');
   }
 
   step(presses, delta) {
@@ -2532,7 +2600,8 @@ class HowToScene extends BackdropScene {
 }
 
 // "ARMA TU PAPAGAYERO": each player builds a look before playing; the last choice is remembered.
-const BUILD = { top: 92, height: 386, width: 372, rowsY: 150, rowGap: 52, idleMs: 30000, leaveMs: 700, preview: 2.1 };
+// In versus the two columns sit at `columns` (x); a confirmed column turns `ready` green.
+const BUILD = { top: 92, height: 386, width: 372, columns: [200, 600], rowsY: 150, rowGap: 52, idleMs: 30000, leaveMs: 700, preview: 2.1, ready: 0x7dff8a };
 const ROW_TITLES = ['CHAMO / CHAMA', 'PEINADO', 'PIEL', 'FRANELA', 'PAPAGAYO'];
 
 /** Text for a row's value: names for body and hair, a counter for colours and kites (the preview shows them). */
@@ -2569,10 +2638,10 @@ class BuildScene extends BackdropScene {
     this.choices = sanitizeChoices(null);
     this.players = this.mode === 'solo' ? [0] : [0, 1];
     this.stage(looksOf(lineup(this.mode, 0, this.choices)));
-    shine(label(this, W / 2, 46, 'ARMA TU PAPAGAYERO', 3), GOLD);
-    this.columns = this.players.map((player) => this.addColumn(player, this.players.length === 1 ? W / 2 : 200 + player * 400));
+    heading(this, 'ARMA TU PAPAGAYERO');
+    this.columns = this.players.map((player) => this.addColumn(player, this.players.length === 1 ? W / 2 : BUILD.columns[player]));
     this.g = this.add.graphics();
-    label(this, W / 2, 586, 'JOYSTICK: ELEGIR · B1: ¡LISTO!', 1, DIM);
+    footer(this, 'JOYSTICK: ELEGIR · B1: ¡LISTO!');
     AvatarStore.load().then((stored) => {
       if (!this.sys.isActive() || this.touched) return;
       this.choices = stored;
@@ -2603,7 +2672,7 @@ class BuildScene extends BackdropScene {
       const selected = i === column.row && !column.ready;
       value.setText(selected ? `‹ ${text} ›` : text).setTint(selected ? GOLD : CREAM);
     });
-    column.status.setText(column.ready ? '¡LISTO!' : 'B1: ¡LISTO!').setTint(column.ready ? 0x7dff8a : DIM);
+    column.status.setText(column.ready ? '¡LISTO!' : 'B1: ¡LISTO!').setTint(column.ready ? BUILD.ready : DIM);
     this.scenery.flyers[player].look = resolveLook(choice, player);
   }
 
@@ -2645,7 +2714,8 @@ class BuildScene extends BackdropScene {
       const side = player === 0 ? 1 : -1;
       const x = column.x - 96;
       const mood = column.ready ? 'win' : null;
-      drawPortrait(g, look, { x, y: BUILD.top + BUILD.height - 46, scale: BUILD.preview, side, mood, clock: this.clock }, { x: x + side * 40, y: BUILD.top + 78 });
+      const pose = { x, y: BUILD.top + BUILD.height - 46, scale: BUILD.preview, side, mood, clock: this.clock };
+      drawPortrait(g, look, pose, { x: x + side * 40, y: BUILD.top + 78 });
     });
   }
 }
@@ -2671,7 +2741,10 @@ const drawHome = (g, level, left, bottom, width) => {
   for (let x = left + 10; x < left + width - 20; x += 28 + rng() * 20) {
     const y = bottom - 24;
     if (feature === 'ranchos') rect(g, RANCHOS[floor(rng() * RANCHOS.length)], x, y - 14, 18, 14);
-    else if (feature === 'andes') g.fillStyle(0x6a5a8a).fillTriangle(x - 20, y, x + 10, y - 60, x + 40, y).fillStyle(CREAM).fillTriangle(x + 2, y - 48, x + 10, y - 60, x + 18, y - 48);
+    else if (feature === 'andes') {
+      g.fillStyle(0x6a5a8a).fillTriangle(x - 20, y, x + 10, y - 60, x + 40, y);
+      g.fillStyle(CREAM).fillTriangle(x + 2, y - 48, x + 10, y - 60, x + 18, y - 48);
+    }
     else if (feature === 'cardones') rect(g, 0x3f7a3a, x, y - 40, 8, 40).fillRect(x - 10, y - 26, 10, 6).fillRect(x - 10, y - 34, 4, 10);
     else if (feature === 'mar') rect(g, CREAM, x, y + 8, 12, 2);
     else rect(g, 0xd8d0c0, x, y - 30, 4, 30).fillRect(x - 30, y - 12, 60, 4);
@@ -2773,7 +2846,8 @@ const STAT_ROWS = [
   ['JALONES', 'dashes'],
 ];
 const STAT_COLUMNS = [300, 500];
-const STATS_Y = 166;
+// Result screen rows, top to bottom (y); the stats table spans `statsWidth` px and its rows are `statRow` apart.
+const RESULT = { title: 70, subtitle: 116, stats: 166, statsWidth: 420, statRow: 22, total: 334, menu: 360, record: 372, prompt: 400, help: 486 };
 const INITIALS = { length: 3, y: 420, gap: 64 };
 
 /**
@@ -2793,17 +2867,17 @@ class ResultScene extends BackdropScene {
     const { mode, level, winner, total, earned, choices = DEFAULT_CHOICES } = this.summary;
     this.outcome = mode === 'solo' ? ladderOutcome(winner, level) : 'versus';
     this.stage(looksOf(lineup(mode, level, choices)), [0, 1].map((player) => (player === winner ? 'win' : 'lose')));
-    shine(label(this, W / 2, 70, this.title(), 3), PLAYER_COLORS[winner]);
-    label(this, W / 2, 116, this.subtitle(), 1, GOLD);
+    shine(label(this, W / 2, RESULT.title, this.title(), 3), PLAYER_COLORS[winner]);
+    label(this, W / 2, RESULT.subtitle, this.subtitle(), 1, GOLD);
     this.addStats();
     if (mode === 'versus') {
       this.state = 'menu';
-      this.menu = new Menu(this, W / 2, 360, ['REVANCHA', 'MENÚ PRINCIPAL'], (index) =>
+      this.menu = new Menu(this, W / 2, RESULT.menu, ['REVANCHA', 'MENÚ PRINCIPAL'], (index) =>
         index === 0 ? this.leave('Duel', this.summary) : this.leave('Title'),
       );
       return;
     }
-    label(this, W / 2, 334, `TOTAL ${total}  (+${earned})`, 2);
+    label(this, W / 2, RESULT.total, `TOTAL ${total}  (+${earned})`, 2);
     if (this.outcome === 'next') this.prompt('PULSA START PARA SEGUIR', 'next');
     else Leaderboard.load().then((entries) => (Leaderboard.qualifies(entries, total) ? this.askInitials() : this.showBoard(entries)));
   }
@@ -2825,10 +2899,10 @@ class ResultScene extends BackdropScene {
   addStats() {
     const { names, stats, score } = this.summary;
     const rows = [...STAT_ROWS.map(([title, key]) => [title, stats.map((player) => player[key])]), ['PUNTOS', score]];
-    panel(this, 190, STATS_Y - 12, 420, 140);
-    STAT_COLUMNS.forEach((x, player) => label(this, x, STATS_Y + 8, names[player], 1, PLAYER_COLORS[player]));
+    panel(this, (W - RESULT.statsWidth) / 2, RESULT.stats - 12, RESULT.statsWidth, 140);
+    STAT_COLUMNS.forEach((x, player) => label(this, x, RESULT.stats + 8, names[player], 1, PLAYER_COLORS[player]));
     rows.forEach(([title, values], i) => {
-      const y = STATS_Y + 36 + i * 22;
+      const y = RESULT.stats + 36 + i * RESULT.statRow;
       label(this, W / 2, y, title, 1, DIM);
       STAT_COLUMNS.forEach((x, player) => label(this, x, y, String(values[player])));
     });
@@ -2836,7 +2910,7 @@ class ResultScene extends BackdropScene {
 
   prompt(text, state) {
     this.state = state;
-    const prompt = label(this, W / 2, 400, text);
+    const prompt = label(this, W / 2, RESULT.prompt, text);
     this.tweens.add({ targets: prompt, alpha: 0.3, duration: 500, yoyo: true, repeat: -1 });
   }
 
@@ -2848,8 +2922,8 @@ class ResultScene extends BackdropScene {
     this.slots = this.letters.map((letter, i) => label(this, W / 2 + (i - 1) * INITIALS.gap, INITIALS.y, letter, 4));
     this.caret = this.add.rectangle(0, INITIALS.y + 40, 44, 8, GOLD);
     this.help = [
-      label(this, W / 2, 372, '¡NUEVO RÉCORD! ESCRIBE TUS INICIALES', 1, PLAYER_COLORS[0]),
-      label(this, W / 2, 486, 'JOYSTICK: LETRA Y POSICIÓN · B1: SIGUIENTE', 1, DIM),
+      label(this, W / 2, RESULT.record, '¡NUEVO RÉCORD! ESCRIBE TUS INICIALES', 1, PLAYER_COLORS[0]),
+      label(this, W / 2, RESULT.help, 'JOYSTICK: LETRA · B1: SIGUIENTE', 1, DIM),
     ];
     this.refresh();
   }
