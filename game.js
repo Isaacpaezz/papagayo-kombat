@@ -1460,8 +1460,9 @@ const drawRooftops = (g, flyers) => flyers.forEach((flyer, player) => drawAvatar
 // The kid stands on the front edge of the deck, larger than life; the string hand rests on the physics anchor and
 // the other hand (`grip` px behind it) holds the line.
 const KID = { foot: DECK - 2, back: 18, scale: 1.45, jump: 16, slump: 6, grip: 10 };
-// Figure proportions in local units: feet at y 0 and up is negative; looks and poses scale and flip it.
-const FIGURE = { hip: -28, shoulder: -58, head: -73, headR: 10, hunch: 5 };
+// Figure proportions in local units: feet at y 0 and up is negative; looks and poses scale and flip it. The head
+// sits `headR - 2` above the shoulders, so it always rests on the collar (a slump or a hunch only sinks it lower).
+const FIGURE = { hip: -28, shoulder: -58, head: -66, headR: 10, hunch: 5 };
 const FACE = { ink: 0x2a1810, white: 0xffffff, blush: 0xff7a8a, tear: 0x8fd3ff };
 const PANTS = 0x2c3550;
 const HEADGEAR = { cap: 0xd8323c, wool: 0xf2f2f2, ruana: 0x8a3a8a, stripe: 0xffd23f, flower: 0xff5d8f, hat: 0x8a6a3a, band: 0x3b2414 };
@@ -1548,9 +1549,9 @@ const HAIR_PAINTERS = [
     [-7, -2, 3, 8].forEach((ox) => g.fillStyle(tone).fillTriangle(h.x + ox - 4, h.y - 6, h.x + ox + 4, h.y - 6, h.x + ox - s * 2, h.y - 15));
     hairCap(g, h, tone);
   },
-  // DON GOYO: white hair under a sombrero.
+  // DON GOYO: white sideburns under a sombrero.
   (g, h, s, tone, dye) => {
-    g.fillStyle(tone).fillEllipse(h.x - s * 8, h.y + 1, 6, 9);
+    g.fillStyle(tone).fillRect(h.x - s * 10 - 1.5, h.y - 7, 3, 7);
     g.fillStyle(dye(HEADGEAR.hat)).fillRoundedRect(h.x - 8, h.y - 19, 16, 11, 4).fillEllipse(h.x, h.y - 8, 34, 7);
     rect(g, dye(HEADGEAR.band), h.x - 8, h.y - 11, 16, 2);
   },
@@ -1571,7 +1572,9 @@ const drawFace = (g, { x, y }, side, expression, old) => {
     rect(g, FACE.blush, ex - 8, y, 3, 2).fillRect(ex + 6, y, 3, 2);
   } else if (expression === 'effort') {
     g.fillRect(ex - 3, y + 3, 6, 3).fillStyle(FACE.white).fillRect(ex - 3, y + 3, 6, 1.5);
-    rect(g, FACE.tear, x - side * 10, y - 7, 2, 4);
+    // A drop of sweat at the temple, pointed on top.
+    const temple = ex + side * 7;
+    g.fillStyle(FACE.tear).fillTriangle(temple, y - 10, temple - 2, y - 5, temple + 2, y - 5);
   } else if (expression === 'lose') {
     g.fillRect(ex - 3, y + 4, 6, 1.5).fillRect(ex - 4, y + 5.5, 2, 1.5).fillRect(ex + 2, y + 5.5, 2, 1.5);
     rect(g, FACE.tear, eyes[1], y, 2, 4);
@@ -1608,7 +1611,8 @@ const paintFigure = (g, look, pose, palette, hand, face) => {
     g.lineStyle(chama ? 4 : 5, skin).lineBetween(bend.x, bend.y, to.x, to.y);
   };
   arm(hand);
-  if (mood === 'win') arm({ x: -s * 8, y: FIGURE.head - lift - 24 + sin(pose.clock * 12) * 4 });
+  // The cheering arm goes up beside the head, on the kite side, clear of the face.
+  if (mood === 'win') arm({ x: head.x + s * 26, y: head.y - 20 + sin(pose.clock * 12) * 4 });
   else if (mood === 'lose') arm({ x: -s * 8, y: hip + 10 });
   else arm({ x: hand.x - s * KID.grip, y: hand.y + 9 });
 };
