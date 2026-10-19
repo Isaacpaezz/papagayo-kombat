@@ -80,6 +80,8 @@ const MENU_CODES = {
   confirm: ['START1', 'START2', 'P1_1', 'P2_1'],
 };
 
+const isConfirm = (code) => MENU_CODES.confirm.includes(code);
+
 /** Tracks held cabinet codes and queues every fresh press until the next drain. */
 class CabinetInput {
   constructor(target) {
@@ -2186,6 +2188,9 @@ const MENU_GAP = 48;
 // Every menu screen shares a big heading near the top and a help line along the bottom.
 const SCREEN = { heading: 46, footer: 586 };
 
+/** Tweens `props` on `target` back and forth for ever. */
+const pulse = (scene, target, props, duration, ease) => scene.tweens.add({ targets: target, ...props, duration, yoyo: true, repeat: -1, ease });
+
 /** Centred pixel-font text; `size` is how many screen pixels each font pixel takes (the font's size is its cell width). */
 const label = (scene, x, y, text, size = 1, color = CREAM) =>
   scene.add.bitmapText(x, y, FONT.key, text, FONT.cell * PIXEL * size).setOrigin(0.5).setTint(color);
@@ -2215,7 +2220,7 @@ class Menu {
     this.locked = false;
     this.items = items.map((text, i) => label(scene, x, y + i * MENU_GAP, text, 2));
     this.cursor = scene.add.triangle(0, 0, 0, 0, 16, 10, 0, 20, GOLD).setStrokeStyle(4, INK);
-    scene.tweens.add({ targets: this.cursor, scaleX: 0.5, duration: 260, yoyo: true, repeat: -1 });
+    pulse(scene, this.cursor, { scaleX: 0.5 }, 260);
     this.highlight();
   }
 
@@ -2223,7 +2228,7 @@ class Menu {
     if (this.locked) return;
     if (MENU_CODES.up.includes(code)) this.move(-1);
     else if (MENU_CODES.down.includes(code)) this.move(1);
-    else if (MENU_CODES.confirm.includes(code)) this.confirm();
+    else if (isConfirm(code)) this.confirm();
   }
 
   move(step) {
@@ -2273,7 +2278,7 @@ const addBoard = (scene, entries = Leaderboard.sanitize(null), highlight = -1) =
   const fill = (list) =>
     list.forEach(({ name, score }, i) => {
       rows[i].setText(`${i + 1}. ${name} ${String(score).padStart(BOARD.scoreWidth)}`).setTint(i === highlight ? PLAYER_COLORS[0] : CREAM);
-      if (i === highlight) scene.tweens.add({ targets: rows[i], alpha: 0.3, duration: 260, yoyo: true, repeat: -1 });
+      if (i === highlight) pulse(scene, rows[i], { alpha: 0.3 }, 260);
     });
   fill(entries);
   return fill;
@@ -2364,8 +2369,7 @@ const addLogo = (scene) => {
   shine(logo, 0xff7a2f);
   const subtitle = shine(label(scene, 0, LOGO.y, 'GUERRA DE PAPAGAYOS', 2), GOLD);
   const container = scene.add.container(W / 2, LOGO.y, [shadow, logo, subtitle]);
-  const sway = { from: -LOGO.sway, to: LOGO.sway };
-  scene.tweens.add({ targets: container, rotation: sway, duration: LOGO.swayMs, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+  pulse(scene, container, { rotation: { from: -LOGO.sway, to: LOGO.sway } }, LOGO.swayMs, 'Sine.easeInOut');
   return container;
 };
 
@@ -2405,19 +2409,19 @@ class TitleScene extends keyed('Title') {
   }
 }
 
-// The opening, in seconds: fade in on the sun and pull back over Caracas; the kid launches, the rival rises, the
-// kid saws across its string (fraying it up to `fray` of its toughness) until it snaps; then the logo slams in,
-// `slamScale` times bigger, where the title shows it. Any button skips.
+// The opening, in seconds (5 in all, over the joropo): fade in on the sun and pull back over Caracas; the kid
+// launches, the rival rises, the kid saws across its string (fraying it up to `fray` of its toughness) until it
+// snaps; then the logo slams in, `slamScale` times bigger, where the title shows it. Any button skips.
 const OPENING = {
-  fadeMs: 1200,
-  pull: 2.4,
-  launch: 2.2,
-  climb: 1.4,
-  rival: 3.2,
-  saw: 4.8,
-  cut: 6.2,
-  slam: 7,
-  end: 9.2,
+  fadeMs: 700,
+  pull: 1.4,
+  launch: 0.8,
+  climb: 0.8,
+  rival: 1.1,
+  saw: 2.1,
+  cut: 3.1,
+  slam: 3.5,
+  end: 5,
   stroke: 45,
   strokeRate: 10,
   fray: 0.9,
@@ -2426,6 +2430,8 @@ const OPENING = {
   slamSparks: 60,
   seed: 26,
 };
+// When the wind whooshes (s): both launches and the middle of the first three saw strokes.
+const OPENING_WHOOSHES = [OPENING.launch, OPENING.rival, ...range(3, (i) => OPENING.saw + ((i + 0.5) * PI) / OPENING.strokeRate)];
 // Kite paths as [second, x, y] keys: the kid's kite climbs and swoops onto the rival string; the rival's climbs and holds.
 const OPENING_PATHS = [
   [[OPENING.launch, 170, 500], [OPENING.launch + OPENING.climb, 280, 230], [OPENING.saw, 523, 217], [OPENING.slam, 470, 260]],
@@ -2450,8 +2456,8 @@ const track = (keys, t) => {
 class OpeningScene extends keyed('Opening') {
   create() {
     Arcade.drain();
-    sfx.music('calm');
-    assign(this, { clock: 0, severed: false, logo: null });
+    sfx.music('duel');
+    assign(this, { clock: 0, whooshes: [...OPENING_WHOOSHES], severed: false, logo: null });
     this.view = new DuelView(this, null, attractLooks());
     this.duel = createDuel(makeRng(OPENING.seed));
     this.duel.kites.forEach((kite, player) => {
@@ -2484,6 +2490,11 @@ class OpeningScene extends keyed('Opening') {
     }
     if (clock >= OPENING.cut && !this.severed) this.cut();
     if (clock >= OPENING.slam && !this.logo) this.slam();
+    // The attract view stays silent, so the opening plays its own sounds on the beats.
+    if (this.whooshes[0] <= clock) {
+      this.whooshes.shift();
+      sfx.play('whoosh');
+    }
     this.view.update(duel, dt);
     if (Arcade.drain().length || clock >= OPENING.end) this.scene.start('Title');
   }
@@ -2503,6 +2514,7 @@ class OpeningScene extends keyed('Opening') {
     view.react({ type: 'point', cause: 'cut', loser: 1, winner: 0, value: 1, kite: duel.kites[1] }, duel);
     duel.kites[1] = respawnKite(1);
     this.cameras.main.shake(SHOT.shakeMs, SHOT.shake);
+    sfx.play('snap');
   }
 
   /** The logo drops in from huge and lands with a shake and a shower of sparks. */
@@ -2517,6 +2529,8 @@ class OpeningScene extends keyed('Opening') {
       onComplete: () => {
         this.cameras.main.shake(SHOT.shakeMs, SHOT.shake * 2);
         this.view.fx.sparks(OPENING.slamSparks, W / 2, LOGO.y);
+        sfx.play('thud');
+        sfx.play('jingle');
       },
     });
   }
@@ -2624,7 +2638,7 @@ class HowToScene extends keyed('HowTo', BackdropScene) {
 
   step(presses, delta) {
     this.elapsed += delta;
-    const skipped = presses.some((code) => MENU_CODES.confirm.includes(code));
+    const skipped = presses.some(isConfirm);
     if (this.leaving || (!skipped && this.elapsed < HOWTO.ms)) return;
     this.leaving = true;
     this.scene.start('Build', this.setup);
@@ -2808,7 +2822,7 @@ class IntroScene extends keyed('Intro', BackdropScene) {
     // The rival looks up at its kite in the card's corner, away from the text.
     const pose = { x: left + 140, y: top + height - 16, scale: 1.9, side: -1, mood: null, clock };
     drawPortrait(g, this.cast[1].look, pose, { x: left + 48, y: top + 56 });
-    const skipped = presses.some((code) => MENU_CODES.confirm.includes(code));
+    const skipped = presses.some(isConfirm);
     if (this.leaving || (!skipped && this.elapsed < INTRO_MS)) return;
     this.leaving = true;
     const { level, total, rules, choices } = this;
@@ -2926,7 +2940,7 @@ class ResultScene extends keyed('Result', BackdropScene) {
   prompt(text, state) {
     this.state = state;
     const prompt = label(this, W / 2, RESULT.prompt, text);
-    this.tweens.add({ targets: prompt, alpha: 0.3, duration: 500, yoyo: true, repeat: -1 });
+    pulse(this, prompt, { alpha: 0.3 }, 500);
   }
 
   /** A qualifying total: three letters to write right below the stats. */
@@ -2970,7 +2984,7 @@ class ResultScene extends keyed('Result', BackdropScene) {
       return;
     }
     if (state === 'menu') presses.forEach((code) => this.menu.handle(code));
-    else if ((state === 'next' || state === 'board') && presses.some((code) => MENU_CODES.confirm.includes(code))) this.proceed();
+    else if ((state === 'next' || state === 'board') && presses.some(isConfirm)) this.proceed();
     // Walking away abandons the ladder or the rematch.
     if (this.state !== 'gone' && this.idle > RESULT_IDLE_MS) this.leave('Title');
   }
@@ -2981,7 +2995,7 @@ class ResultScene extends keyed('Result', BackdropScene) {
     const turn = step(MENU_CODES.up) - step(MENU_CODES.down);
     if (turn) this.letters[this.cursor] = shiftLetter(this.letters[this.cursor], turn);
     this.cursor = Phaser.Math.Clamp(this.cursor + step(MENU_CODES.right) - step(MENU_CODES.left), 0, INITIALS.length - 1);
-    if (MENU_CODES.confirm.includes(code)) {
+    if (isConfirm(code)) {
       if (this.cursor < INITIALS.length - 1) this.cursor += 1;
       else this.submit();
     }
