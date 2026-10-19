@@ -1,4 +1,4 @@
-// ¡HOJILLAZO! Guerra de papagayos — Platanus Hack 26 Caracas Edition
+// PAPAGAYO KOMBAT: Guerra en el cielo de Caracas — Platanus Hack 26 Caracas Edition
 // Kite duel over Caracas: sweep your tail's blade (the hojilla) across the rival's string to cut it.
 
 // The whole game lives in one function scope (left unindented) so the minifier can shorten every name.
@@ -1802,22 +1802,26 @@ const SOUNDS = {
   power: notes(POWER_UP, 0.25),
 };
 const ATTACK = 0.006;
-// Joropo in D under the action: one 6/8 bar of six eighths per chord (I IV V7 I). The bass alternates 3/4 and 6/8
-// bars (sesquiáltera); the cuatro strums every eighth and chops the third of each beat ("chas"); maracas shake on
-// every eighth; the arpa walks the chord. `beat` is the eighth (s) per mood: a calm title, the duel, the hot end.
-const JOROPO = { roots: [50, 55, 57, 50], seventh: 2, beat: { calm: 0.16, duel: 0.145, hot: 0.125 }, level: 0.3, ahead: 0.3, every: 50 };
-const CHORD_TONES = [0, 4, 7, 12];
-const SEVENTH_TONES = [0, 4, 7, 10];
-const ARPA_WALK = [0, 1, 2, 3, 2, 1];
-const BASS_HITS = [[0, 2, 4], [0, 3]];
+// Chiptune under the action, in sixteenth steps (16 per bar). The lead's hook is four bars of A minor (Am F C G),
+// played twice with a cadence bar closing the second pass; one letter per step is a note ('a' = A4, a semitone
+// each) held until the next one, '.' holds. `step` is the sixteenth (s) per mood: the title, the duel, the hot end.
+const CHIP = { step: { calm: 0.1, duel: 0.094, hot: 0.082 }, level: 0.42, ahead: 0.3, every: 50 };
+const LEAD = ['m.hm.pom.k.h.fh.', 'i.di.mki.h.d.fh.', 'h.kp.opr.p.k.hk.', 'o.kf.kor.rpomkhf', 'h.ko.m.km...m...'];
+const PHRASE = [0, 1, 2, 3, 0, 1, 2, 4];
+const ROOTS = [45, 41, 48, 43, 45];
+// Drum voices (the noise channel, plus a low sine kick).
+const DRUMS = {
+  kick: ['sine', 55, 'lowpass', 200, 200, 0.8, 0.12],
+  snare: ['noise', 0, 'bandpass', 1800, 900, 0.45, 0.12],
+  hat: ['noise', 0, 'highpass', 8000, 8000, 0.12, 0.03],
+};
 
-/** Light synthesised SFX and the joropo; silent without an AudioContext and never needed to play. */
+/** Light synthesised SFX and the chiptune; silent without an AudioContext and never needed to play. */
 const createSfx = (ctx) => {
   if (!ctx) return { play() {}, music() {} };
   const master = ctx.createGain();
   const band = ctx.createGain();
   const noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
-  const strings = {};
   master.gain.value = 0.5;
   band.gain.value = 0;
   master.connect(ctx.destination);
@@ -1842,37 +1846,22 @@ const createSfx = (ctx) => {
     source.stop(start + duration);
   };
 
-  /** A plucked string (Karplus-Strong, rendered once per note), faded out over `length` s. */
-  const pluck = (midi, start, gain, length) => {
-    const hz = midiToHz(midi);
-    const period = round(ctx.sampleRate / hz);
-    if (!strings[midi]) {
-      const buffer = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
-      const wave = buffer.getChannelData(0);
-      for (let i = 0; i < wave.length; i += 1) wave[i] = i < period ? Math.random() * 2 - 1 : 0.498 * (wave[i - period] + wave[i - period + 1]);
-      strings[midi] = buffer;
+  /** One sixteenth: square lead, bouncing triangle bass on the eighths, and the drums (busier when hot). */
+  const sixteenth = (count, start, mood, step) => {
+    const at = count % 16;
+    const bar = PHRASE[floor(count / 16) % PHRASE.length];
+    const line = LEAD[bar];
+    const hot = mood === 'hot';
+    const play = (spec) => voice(spec, start, band);
+    if (line[at] !== '.') {
+      let hold = 1;
+      while (at + hold < 16 && line[at + hold] === '.') hold += 1;
+      play(['square', midiToHz(line.charCodeAt(at) - 28 + (hot ? 12 : 0)), 'lowpass', 4000, 1500, hot ? 0.12 : 0.16, hold * step * 0.9]);
     }
-    const source = assign(ctx.createBufferSource(), { buffer: strings[midi] });
-    source.playbackRate.value = (hz * (period + 0.5)) / ctx.sampleRate;
-    const amp = ctx.createGain();
-    amp.gain.setValueAtTime(gain, start);
-    amp.gain.linearRampToValueAtTime(0, start + length);
-    source.connect(amp).connect(band);
-    source.start(start);
-    source.stop(start + length);
-  };
-
-  /** One eighth of the joropo. */
-  const eighth = (count, start, mood) => {
-    const at = count % 6;
-    const bar = floor(count / 6) % JOROPO.roots.length;
-    const root = JOROPO.roots[bar];
-    const tones = bar === JOROPO.seventh ? SEVENTH_TONES : CHORD_TONES;
-    const downbeat = at % 3 === 0;
-    if (BASS_HITS[bar % 2].includes(at)) pluck(root - 12 + (at ? 7 : 0), start, 0.8, 0.5);
-    tones.forEach((tone, i) => pluck(root + tone, start + i * 0.012, downbeat ? 0.32 : 0.2, at % 3 === 2 ? 0.05 : 0.3));
-    voice(['noise', 0, 'highpass', 6000, 6000, downbeat ? 0.3 : 0.15, downbeat ? 0.09 : 0.04], start, band);
-    if (mood !== 'calm' || at % 2 === 0) pluck(root + 12 + tones[ARPA_WALK[at]] + (mood === 'hot' && at % 2 ? 12 : 0), start, 0.45, 0.8);
+    if (at % 2 === 0) play(['triangle', midiToHz(ROOTS[bar] + (at % 4 ? 12 : 0)), 'lowpass', 1200, 600, 0.5, step * 1.8]);
+    if (at % (hot ? 4 : 8) === 0) play(DRUMS.kick);
+    if (mood !== 'calm' && (at % 8 === 4 || (hot && bar === 3 && at > 11))) play(DRUMS.snare);
+    if (hot || at % 2 === 0) play(DRUMS.hat);
   };
 
   // A lookahead scheduler on the audio clock: one loop for the whole game, so moods switch without stacking.
@@ -1881,18 +1870,19 @@ const createSfx = (ctx) => {
   let next = 0;
   setInterval(() => {
     if (!mood || ctx.state !== 'running') return;
+    const step = CHIP.step[mood];
     next = max(next, ctx.currentTime + 0.05);
-    for (; next < ctx.currentTime + JOROPO.ahead; next += JOROPO.beat[mood]) eighth(count++, next, mood);
-  }, JOROPO.every);
+    for (; next < ctx.currentTime + CHIP.ahead; next += step) sixteenth(count++, next, mood, step);
+  }, CHIP.every);
 
   return {
     play: (name) => SOUNDS[name].forEach((spec) => voice(spec)),
-    /** 'calm', 'duel' or 'hot' plays the joropo in that mood (from its first bar when it was silent); null fades it out. */
+    /** 'calm', 'duel' or 'hot' plays the chiptune in that mood (from its first bar when it was silent); null fades it out. */
     music(name) {
       if (name === mood) return;
       if (!mood) count = 0;
       mood = name;
-      band.gain.setTargetAtTime(name ? JOROPO.level : 0, ctx.currentTime, 0.05);
+      band.gain.setTargetAtTime(name ? CHIP.level : 0, ctx.currentTime, 0.05);
     },
   };
 };
@@ -2357,18 +2347,26 @@ class DuelLoop {
 // The attract demo: two CPU sparring partners fight behind the menu (bolder than any ladder rival, so a point
 // comes every few seconds) and start over after each match. Left idle for `idleMs`, the title plays the opening.
 const ATTRACT = { levels: [3, 5], rules: 'vidas', restartMs: 2500, idleMs: 30000, spar: { aggression: 1, guard: 0, pace: 1, stroke: 90 } };
-const LOGO = { y: 84, size: 5, sway: 0.04, swayMs: 1800 };
+// The logo stacks PAPAGAYO over a bigger, hotter KOMBAT and the subtitle; `lines` are their [y offset, size].
+const LOGO = { y: 84, lines: [[-44, 4], [20, 5], [76, 2]], shadow: PIXEL * 3, sway: 0.03, swayMs: 1800, kombat: 0xff3b2f };
 const RULE_NAMES = ['TIEMPO', 'VIDAS'];
 // The title menu sits on a dark backing so the demo kites flying behind it never hide its text.
 const TITLE_MENU = { y: 250, backing: { x: 200, y: 214, width: 400, height: 120 } };
 const attractLooks = () => ATTRACT.levels.map((level) => RIVAL_LOOKS[level]);
 
-/** The ¡HOJILLAZO! logo: warm chunky letters with a hard drop shadow over GUERRA DE PAPAGAYOS, swaying like a kite. */
+/** The PAPAGAYO KOMBAT logo, 90s fighting-game style: chunky letters with hard drop shadows, KOMBAT burning
+ * gold to red, over GUERRA EN EL CIELO DE CARACAS; it sways like a kite. */
 const addLogo = (scene) => {
-  const [shadow, logo] = [PIXEL * 4, 0].map((offset) => label(scene, offset, offset, '¡HOJILLAZO!', LOGO.size, INK));
-  shine(logo, 0xff7a2f);
-  const subtitle = shine(label(scene, 0, LOGO.y, 'GUERRA DE PAPAGAYOS', 2), GOLD);
-  const container = scene.add.container(W / 2, LOGO.y, [shadow, logo, subtitle]);
+  const parts = ['PAPAGAYO', 'KOMBAT', 'GUERRA EN EL CIELO DE CARACAS'].flatMap((text, i) => {
+    const [y, size] = LOGO.lines[i];
+    const offset = i < 2 ? LOGO.shadow : PIXEL;
+    const shadow = label(scene, offset, y + offset, text, size, INK);
+    const face = label(scene, 0, y, text, size);
+    if (i === 1) face.setTint(GOLD, GOLD, LOGO.kombat, LOGO.kombat);
+    else shine(face, i ? GOLD : 0xff7a2f);
+    return [shadow, face];
+  });
+  const container = scene.add.container(W / 2, LOGO.y, parts);
   pulse(scene, container, { rotation: { from: -LOGO.sway, to: LOGO.sway } }, LOGO.swayMs, 'Sine.easeInOut');
   return container;
 };
@@ -2409,7 +2407,7 @@ class TitleScene extends keyed('Title') {
   }
 }
 
-// The opening, in seconds (5 in all, over the joropo): fade in on the sun and pull back over Caracas; the kid
+// The opening, in seconds (5 in all, over the chiptune): fade in on the sun and pull back over Caracas; the kid
 // launches, the rival rises, the kid saws across its string (fraying it up to `fray` of its toughness) until it
 // snaps; then the logo slams in, `slamScale` times bigger, where the title shows it. Any button skips.
 const OPENING = {
