@@ -12,8 +12,8 @@
 // 1. Configuration
 // ---------------------------------------------------------------------------
 
-// Every plain-number setting lives here, ahead of any other statement, grouped by the section that uses it:
-// minifiers like esbuild only fold constants declared before the first statement that does real work.
+// Every tuning number the rules, the tests and several screens share lives here, ahead of any other statement,
+// grouped by the section that uses it. Layout and art numbers used in one place are written where they are drawn.
 
 // Screen (world units)
 const W = 800;
@@ -38,7 +38,6 @@ const KITE_LEAN = 0.25;
 const KITE_SLACK_AERO = 0.85;
 const KITE_GRAVITY = 680;
 const KITE_GUST = 150;
-const TAUT_SLACK = 4;
 // JALAR (B1): pressing gives a burst along the stick plus a tug that always lifts: an upward kick, then `tug`
 // seconds in which the kite flies on full lift as if the wind blew at least `tugWind` (a taut line can't climb
 // past its end). Holding B1 keeps that lift on while it drains the AIRE meter.
@@ -76,11 +75,8 @@ const POWER_LINE_Y = 462;
 const POWER_LINE_SAG = 16;
 const POWER_LINE_HALF = 4;
 const ROOF_Y = 530;
-const ZAMURO_RADIUS = 20;
-const ZAMURO_SPEED = 110;
-const ZAMURO_MARGIN = 40;
+// Kites whose strings snap in the same step bounce apart at this speed.
 const CLASH_BOUNCE = 260;
-const CLASH_GRACE = 0.35;
 // One 3-2-1, then non-stop flying. TIEMPO lasts `time` s and its last `double` s count twice; VIDAS gives each
 // side `lives` kites. `hint` is how long the first calm keeps teaching the hold.
 const MATCH_COUNTDOWN = 1.8;
@@ -117,13 +113,6 @@ const POWER_ALLY = 260;
 const POWER_ALLY_LIFE = 4;
 const POWER_STUN = 1;
 
-// CPU rival
-// strikeAlong: where on the rival string to aim, as a fraction from its kite toward its anchor.
-const CPU_STRIKE_ALONG = 0.25;
-const CPU_FLOOR = 390;
-const CPU_THREAT = 90;
-const CPU_DEADZONE = 10;
-
 // Score, stats & ladder
 // Solo points: a cut is worth more than a rival's crash (both doubled when the point is); beating rival n pays
 // `win` × n, plus `flawless` if the rival never scored.
@@ -131,32 +120,19 @@ const SCORE_CUT = 1000;
 const SCORE_CRASH = 400;
 const SCORE_WIN = 2000;
 const SCORE_FLAWLESS = 1500;
-const LETTER_COUNT = 26;
-
-// Avatars
-const HAIR_TONES_DARK = 0x2b1a12;
-const HAIR_TONES_WHITE = 0xeeeae2;
 
 // Art direction
-const RIM = 0xffa25e;
-const STICK = 0x4a2c18;
-const STEEL = 0xe8eef7;
+const HAIR_WHITE = 0xeeeae2;
 const WIRE = 0x150c13;
 const ZAMURO_INK = 0x17111a;
-const ZAMURO_TIP = 0xcfc6bd;
-const WINDOW_LIT = 0xffd27a;
 // Visible breeze (px/s): papelitos race in a gust, drift and sink in a calm.
 const BREEZE_SPEED = 120;
 const BREEZE_GUST = 0.6;
 const BREEZE_SINK = 60;
+// How far a string bellies at its middle (px): a little when taut, more the slacker it is, up to `max`.
 const SAG_TAUT = 3;
 const SAG_SLACK = 0.6;
 const SAG_MAX = 90;
-// A cut kite tumbles away: heavy, spinning, nudged by the gust (presentation only).
-const FALL_GRAVITY = 900;
-const FALL_DRIFT = 0.8;
-const FALL_DRAG = 0.6;
-const FALL_SPIN = 9;
 
 // Pixel art: font and backdrop painters
 // The canvas is a quarter of the 800×600 world: every screen pixel is PIXEL world units wide, so everything the
@@ -164,37 +140,14 @@ const FALL_SPIN = 9;
 const PIXEL = 2;
 const PW = W / PIXEL;
 const PH = H / PIXEL;
-// Background layers are wider than the screen so they can slide for parallax.
-const PARALLAX = 40;
-const WIDE = (W + 2 * PARALLAX) / PIXEL;
+// Background layers are 40 px wider than the screen on each side so they can slide for parallax.
+const WIDE = (W + 2 * 40) / PIXEL;
 const FONT_CELL = 7;
 const FONT_HEIGHT = 11;
-const FONT_ADVANCE = 6;
 const FONT_PER_ROW = 16;
-const HORIZON = 236;
-const SKY_BANDS = 12;
-const SUN_X = 150;
-const SUN_Y = 250;
-const SUN_SIZE = 48;
 const HUMBOLDT_BODY = 0xe8e2f0;
-const HUMBOLDT_BAND = 0x9a8fb4;
-const CABLE_CAR_FROM = 0.08;
-const CABLE_CAR_COLOR = 0xd8323c;
-const RANCHO_ROOF = 0x5a3a4a;
-const CERROS_REACH = 175;
-const CERROS_RISE = 78;
-const CERROS_FOOT = 246;
-const CERROS_RANCHOS = 230;
-const DARK_GLASS = 0x2a2440;
-const CITY_DEPTH = 0.09;
-const POLE_TOP = 223;
-const POLE_BAR = 27;
-// Azoteas seen slightly from above: the kid stands on the front edge of a deck whose back edge is ROOF_Y.
-const DECK = 572;
+// Each azotea is AZOTEA_HALF pixels to each side of its kid.
 const AZOTEA_HALF = 40;
-const TANK_BODY = 0x2c5aa0;
-const TANK_LIGHT = 0x5b8fd8;
-const TANK_DARK = 0x1d3d6e;
 
 // Actors: wind, zamuros, kids, kites
 // Particles turn into streaks exactly when the wind reaches the ¡RÁFAGA! threshold.
@@ -203,110 +156,29 @@ const WIND_PARTICLES_TOP = 20;
 const WIND_PARTICLES_BOTTOM = 520;
 const WIND_PARTICLES_STREAK = BREEZE_SPEED * WIND_RAFAGA;
 const WIND_PARTICLES_TRACE = 0.06;
-// The kid stands on the front edge of the deck, larger than life; the string hand rests on the physics anchor and
-// the other hand (`grip` px behind it) holds the line.
-const KID_FOOT = DECK - 2;
-const KID_BACK = 18;
-const KID_SCALE = 1.45;
-const KID_JUMP = 16;
-const KID_SLUMP = 6;
-const KID_GRIP = 10;
-// Figure proportions in local units: feet at y 0 and up is negative; looks and poses scale and flip it. The head
-// sits `headR - 2` above the shoulders, so it always rests on the collar (a slump or a hunch only sinks it lower).
-const FIGURE_HIP = -28;
-const FIGURE_SHOULDER = -58;
-const FIGURE_HEAD = -66;
-const FIGURE_HEAD_R = 10;
-const FIGURE_HUNCH = 5;
-const FACE_INK = 0x2a1810;
-const FACE_BLUSH = 0xff7a8a;
 const FACE_TEAR = 0x8fd3ff;
-const PANTS = 0x2c3550;
 const HEADGEAR_CAP = 0xd8323c;
-const HEADGEAR_WOOL = 0xf2f2f2;
-const HEADGEAR_RUANA = 0x8a3a8a;
-const HEADGEAR_STRIPE = 0xffd23f;
-const HEADGEAR_FLOWER = 0xff5d8f;
-const HEADGEAR_HAT = 0x8a6a3a;
-const HEADGEAR_BAND = 0x3b2414;
-// How long a kid celebrates (or sulks) after a point.
-const CHEER_S = 1.2;
-const SPIN_RATE = 18;
-const YANK_DECAY = 4;
-const BRIDLE = 16;
-const FLUTTER_RATE = 9;
-const FLUTTER_SWING = 0.05;
-const FLUTTER_LEAN = 0.0015;
-// Power colours and icons: glass shards, a turbo bolt, a nylon ring and a little vulture.
+// Power colour: glass shards, the NYLON ring and the active power's name in the HUD.
 const GLASS = 0x8ff3ff;
-const TURBO_BOLT = 0xffd23f;
-const CRATE_SIZE = 32;
-const CRATE_WOOD = 0xb06a32;
-const CRATE_EDGE = 0x6a3a1a;
-
-// Effects & audio
-const BURST_SPARKS = 45;
-const ATTACK = 0.006;
-const CHIP_LEVEL = 0.42;
-const CHIP_AHEAD = 0.3;
-const CHIP_EVERY = 50;
 
 // Duel view & HUD
-const HUD_MARGIN = 24;
-const HUD_NAME_Y = 24;
-const HUD_SCORE_Y = 56;
-const HUD_PIP_GAP = 30;
-const HUD_PIP_SCALE = 0.36;
-const HUD_METER_Y = 84;
 const HUD_METER_W = 120;
-const HUD_METER_H = 10;
-const HUD_POWER_Y = 104;
-const HUD_CLOCK_Y = 30;
 // Every centre announcement shares ONE banner slot for `seconds`. A higher rank cuts in at once (the shout it
 // interrupts waits again); the rest wait in line, by rank then age, and only the `keep` highest stay queued.
 // Wind cues and hints only show while the slot is empty.
 const BANNER_SECONDS = 1.2;
 const BANNER_KEEP = 2;
-const REFUSE_S = 0.3;
-const COUNTDOWN_STEPS = 3;
-// Juice for a cut: the duel loop freezes for `hitstop` s, then the camera shakes.
+// Juice for a cut: the camera shakes.
 const SHOT_SHAKE_MS = 280;
 const SHOT_SHAKE = 0.006;
-const SHOT_HITSTOP = 0.15;
-const FOCUS_EASE = 2;
 
 // UI helpers
-const MENU_GAP = 48;
-// Every menu screen shares a big golden heading near the top and a cream help line along the bottom (cream reads
-// over the dark rooftops).
-const SCREEN_HEADING = 46;
+// Every menu screen shares a big golden heading near the top (y 46) and a cream help line along the bottom (cream
+// reads over the dark rooftops).
 const SCREEN_FOOTER = 586;
 
 // Scenes
-// The top-five panel: rows start `firstRow` px below its top; scores are right-aligned in `scoreWidth` characters.
-const BOARD_X = 110;
-const BOARD_Y = 420;
-const BOARD_WIDTH = 580;
-const BOARD_HEIGHT = 146;
-const BOARD_FIRST_ROW = 48;
-const BOARD_ROW = 19;
-const BOARD_SCORE_WIDTH = 7;
-// Caps the catch-up after a stalled frame so the simulation never spirals.
-const MAX_LAG = 0.1;
-const ATTRACT_RESTART_MS = 2500;
-const ATTRACT_IDLE_MS = 30000;
-// The logo stacks PAPAGAYO over a bigger, hotter KOMBAT and the subtitle; `lines` are their [y offset, size].
-const LOGO_Y = 84;
-const LOGO_SHADOW = PIXEL * 3;
-const LOGO_SWAY = 0.03;
-const LOGO_SWAY_MS = 1800;
 const LOGO_KOMBAT = 0xff3b2f;
-// The title menu sits on a dark backing so the demo kites flying behind it never hide its text.
-const TITLE_MENU_Y = 250;
-const TITLE_BACKING_X = 200;
-const TITLE_BACKING_Y = 214;
-const TITLE_BACKING_WIDTH = 400;
-const TITLE_BACKING_HEIGHT = 120;
 // The opening, in seconds (5 in all, over the chiptune): fade in on the sun and pull back over Caracas; the kid
 // launches, the rival rises, the kid saws across its string (fraying it up to `fray` of its toughness) until it
 // snaps; then the logo slams in, `slamScale` times bigger, where the title shows it. Any button skips.
@@ -326,78 +198,9 @@ const OPENING_SLAM_SCALE = 4;
 const OPENING_SLAM_MS = 280;
 const OPENING_SLAM_SPARKS = 60;
 const OPENING_SEED = 26;
-// CÓMO JUGAR: shown after choosing the rules, before building the papagayero; B1/START or `ms` moves on.
-// `margin`/`top`/`height` frame the panel; in versus the two cabinets sit at `columns` (x).
-const HOWTO_MS = 8000;
-const HOWTO_MARGIN = 30;
-const HOWTO_TOP = 80;
-const HOWTO_HEIGHT = 482;
-const HOWTO_CABINET_Y = 180;
-const HOWTO_LEGEND_Y = 312;
-const HOWTO_LINE_GAP = 42;
-const HOWTO_GOAL_Y = 432;
-const HOWTO_POWERS_Y = 470;
-const HOWTO_POWER_GAP = 170;
-// One player's half of the cabinet: the joystick, then two rows of three numbered buttons (the bottom row is
-// unused). The real button colours are unknown, so they are drawn neutral and always named by number. x offsets
-// are from the panel centre, y offsets from the top button row; key hints sit `hint` px above their control.
-const PANEL_WIDTH = 300;
-const PANEL_HEIGHT = 160;
-const PANEL_TOP = -60;
 const PANEL_PLATE = 0x3a2a50;
 const PANEL_CAP = 0xe4dccf;
-const PANEL_HINT = -42;
-const JOYSTICK_X = -95;
-const JOYSTICK_BASE = 40;
-const JOYSTICK_BASE_R = 30;
-const JOYSTICK_BALL = 4;
-const JOYSTICK_BALL_R = 15;
-const JOYSTICK_SHAFT = 4;
-const BUTTONS_X = -15;
-const BUTTONS_GAP = 58;
-const BUTTONS_ROW = 58;
-const BUTTONS_RADIUS = 20;
-const BUTTONS_RING = 6;
-const BUTTONS_USED = 2;
-const BUTTONS_UNUSED_ALPHA = 0.4;
-// "ARMA TU PAPAGAYERO": each player builds a look before playing; the last choice is remembered.
-// In versus the two columns sit at `columns` (x); a confirmed column turns `ready` green.
-const BUILD_TOP = 92;
-const BUILD_HEIGHT = 386;
-const BUILD_WIDTH = 372;
-const BUILD_ROWS_Y = 150;
-const BUILD_ROW_GAP = 52;
-const BUILD_IDLE_MS = 30000;
-const BUILD_LEAVE_MS = 700;
-const BUILD_PREVIEW = 2.1;
-const BUILD_READY = 0x7dff8a;
-const INTRO_MS = 3200;
-// Names longer than `longName` letters drop to a smaller size to fit beside the portrait.
-const CARD_LEFT = 100;
-const CARD_TOP = 150;
-const CARD_WIDTH = 600;
-const CARD_HEIGHT = 280;
-const CARD_TEXT_X = 480;
-const CARD_LAND = 230;
-const CARD_LONG_NAME = 10;
-const CARD_BOTTOM = CARD_TOP + CARD_HEIGHT;
-const RESULT_DELAY_MS = 1200;
-const RESULT_IDLE_MS = 25000;
-const INITIALS_IDLE_MS = 30000;
-// Result screen rows, top to bottom (y); the stats table spans `statsWidth` px and its rows are `statRow` apart.
-const RESULT_TITLE = 70;
-const RESULT_SUBTITLE = 116;
-const RESULT_STATS = 166;
-const RESULT_STATS_WIDTH = 420;
-const RESULT_STAT_ROW = 22;
-const RESULT_TOTAL = 334;
-const RESULT_MENU = 360;
-const RESULT_RECORD = 372;
-const RESULT_PROMPT = 386;
-const RESULT_HELP = 486;
 const INITIALS_LENGTH = 3;
-const INITIALS_Y = 420;
-const INITIALS_GAP = 64;
 
 // Short names for the Math functions used everywhere.
 const { sin, cos, max, min, abs, PI, sign, hypot, floor, round, exp, ceil, atan2, sqrt } = Math;
@@ -458,11 +261,9 @@ const PLAYER_CODES = [1, 2].map((n) => ({
 
 const MENU_CODES_UP = ['P1_U', 'P2_U'];
 const MENU_CODES_DOWN = ['P1_D', 'P2_D'];
-const MENU_CODES_LEFT = ['P1_L', 'P2_L'];
-const MENU_CODES_RIGHT = ['P1_R', 'P2_R'];
-const MENU_CODES_CONFIRM = ['START1', 'START2', 'P1_1', 'P2_1'];
 
-const isOk = (code) => MENU_CODES_CONFIRM.includes(code);
+/** B1 or START of either player confirms in every menu. */
+const isOk = (code) => ['START1', 'START2', 'P1_1', 'P2_1'].includes(code);
 
 /** The cabinet: tracks held codes and queues every fresh press until the next drain. */
 const Arcade = new (class {
@@ -752,7 +553,7 @@ const constrain = (kite) => {
   const dx = kite.x - kite.anchor.x;
   const dy = kite.y - kite.anchor.y;
   const reach = hypot(dx, dy);
-  kite.taut = reach >= kite.len - TAUT_SLACK;
+  kite.taut = reach >= kite.len - 4;
   if (reach <= kite.len) return;
   const nx = dx / reach;
   const ny = dy / reach;
@@ -809,9 +610,6 @@ const flyKite = (kite, input, weather, dt) => {
   return pulled;
 };
 
-// Kite countdowns (seconds) that simply run out.
-const TIMERS = ['tug', 'stun', 'guard', 'vidrio', 'turbo'];
-
 /** A replacement kite rising from the kid's hands to the spawn height, out of the player's control; at the top
  * it starts its guard (untouchable, blinking). */
 const rise = (kite, dt) => {
@@ -824,7 +622,8 @@ const rise = (kite, dt) => {
 
 /** Advances one kite by dt and returns whether JALAR fired. */
 const stepKite = (kite, input, weather, dt) => {
-  TIMERS.forEach((timer) => (kite[timer] = max(0, kite[timer] - dt)));
+  // Countdowns (seconds) that simply run out.
+  ['tug', 'stun', 'guard', 'vidrio', 'turbo'].forEach((timer) => (kite[timer] = max(0, kite[timer] - dt)));
   const pulled = kite.respawn > 0 ? rise(kite, dt) : flyKite(kite, input, weather, dt);
   stepTail(kite, weather, dt);
   return pulled;
@@ -857,9 +656,7 @@ const sawSpeed = (kite, rival) => {
 // 6. Duel rules (pure)
 // ---------------------------------------------------------------------------
 
-const ZAMURO_BAND = [140, 380];
 const ZAMURO_EVERY = [5, 9];
-const RULES = ['tiempo', 'vidas'];
 // One full cycle of gusts and calms every 10 s.
 const WIND_CYCLE = TAU / 10;
 // How deep the lulls swing (the duel's `lull`): gentle against the first rival, full against the last.
@@ -867,8 +664,6 @@ const LULLS_LADDER = [0.56, 0.6, 0.63, 0.65, 0.67, 0.68];
 // Power boxes: one every `every` s (at most `max` around), drifting `drift` × the gust, gone after `life` s.
 const POWERS = ['vidrio', 'turbo', 'nylon', 'zamuro'];
 const BOX_EVERY = [10, 14];
-const BOX_X = [260, 540];
-const BOX_BAND = [150, 340];
 
 const wireY = (x) => {
   const t = (x - POWER_LINE_FROM) / (POWER_LINE_TO - POWER_LINE_FROM);
@@ -945,11 +740,13 @@ const spawn = (duel, dt) => {
   const { rng } = duel;
   if (due(duel, 'nextZamuro', ZAMURO_EVERY, dt)) {
     const direction = rng() < 0.5 ? 1 : -1;
-    const x = direction > 0 ? -ZAMURO_MARGIN : W + ZAMURO_MARGIN;
-    duel.zamuros.push({ x, y: roll(rng, ZAMURO_BAND), vx: direction * ZAMURO_SPEED, vy: 0, hit: [false, false] });
+    // Zamuros enter and leave 40 px beyond the screen edges.
+    const x = direction > 0 ? -40 : W + 40;
+    duel.zamuros.push({ x, y: roll(rng, [140, 380]), vx: direction * 110, vy: 0, hit: [false, false] });
   }
   if (due(duel, 'nextBox', BOX_EVERY, dt) && duel.boxes.length < BOX_MAX) {
-    duel.boxes.push({ x: roll(rng, BOX_X), y: roll(rng, BOX_BAND), kind: POWERS[floor(rng() * POWERS.length)], life: BOX_LIFE });
+    // Boxes appear over the street, in the band where the kites fight.
+    duel.boxes.push({ x: roll(rng, [260, 540]), y: roll(rng, [150, 340]), kind: POWERS[floor(rng() * POWERS.length)], life: BOX_LIFE });
   }
 };
 
@@ -972,7 +769,7 @@ const advanceWorld = (duel, inputs, dt) => {
     if (stepKite(kite, inputs[player], weather, dt)) events.push({ type: 'dash', player });
   });
   duel.zamuros.forEach((zamuro) => flyZamuro(duel, zamuro, dt));
-  duel.zamuros = duel.zamuros.filter(({ x, life = 1 }) => life > 0 && x > -ZAMURO_MARGIN - 1 && x < W + ZAMURO_MARGIN + 1);
+  duel.zamuros = duel.zamuros.filter(({ x, life = 1 }) => life > 0 && x > -41 && x < W + 41);
   duel.boxes.forEach((box) => {
     box.x += weather.gust * BOX_DRIFT * dt;
     box.life -= dt;
@@ -988,7 +785,8 @@ const stunKites = (duel) => {
     duel.kites.forEach((kite, player) => {
       const ally = 'prey' in zamuro;
       if (zamuro.hit[player] || (ally && zamuro.prey !== player) || !exposed(kite)) return;
-      if (dist(zamuro, kite) > ZAMURO_RADIUS + KITE_RADIUS) return;
+      // A zamuro's body reaches 20 px from its centre.
+      if (dist(zamuro, kite) > 20 + KITE_RADIUS) return;
       zamuro.hit[player] = true;
       kite.stun = ally ? POWER_STUN : STUN;
       if (ally) zamuro.life = 0;
@@ -1042,7 +840,8 @@ const clash = (duel) => {
   a.vy += ny * CLASH_BOUNCE;
   b.vx -= nx * CLASH_BOUNCE;
   b.vy -= ny * CLASH_BOUNCE;
-  duel.grace = CLASH_GRACE;
+  // A short grace keeps the half-healed strings from snapping again at once.
+  duel.grace = 0.35;
   return { type: 'clash' };
 };
 
@@ -1153,10 +952,11 @@ const createCpu = (level, player, rng) => ({
   holding: false,
 });
 
-/** Kite position that hangs the blade across the rival string, a little below the rival kite. */
+/** Kite position that hangs the blade across the rival string, a quarter of the way from the rival kite to its
+ * anchor. */
 const strikePoint = (rival) => ({
-  x: rival.x + (rival.anchor.x - rival.x) * CPU_STRIKE_ALONG,
-  y: rival.y + (rival.anchor.y - rival.y) * CPU_STRIKE_ALONG - BLADE_DEPTH,
+  x: rival.x + (rival.anchor.x - rival.x) * 0.25,
+  y: rival.y + (rival.anchor.y - rival.y) * 0.25 - BLADE_DEPTH,
 });
 
 /** Aims past the strike point on the far side of the string, so the blade saws across it. */
@@ -1167,7 +967,8 @@ const sawPoint = (me, rival, stroke) => {
   return { x: strike.x + side * nx * stroke, y: strike.y + side * ny * stroke };
 };
 
-const threatened = (me, rival) => pointSegmentDistance(rival.tail[TAIL_SEGMENTS], me.anchor, me) < CPU_THREAT;
+/** A rival blade within 90 px of its string. */
+const threatened = (me, rival) => pointSegmentDistance(rival.tail[TAIL_SEGMENTS], me.anchor, me) < 90;
 
 /** Where a kite flies safest: straight above its own anchor, on the end of its line. */
 const retreatPoint = (kite) => ({ x: kite.anchor.x, y: kite.anchor.y - kite.len });
@@ -1199,12 +1000,14 @@ const plan = (cpu, duel) => {
   const aim = greedy ? box : attacks ? sawPoint(me, rival, spec.stroke) : retreatPoint(me);
   cpu.target = {
     x: aim.x + gauss(rng) * spec.aim,
-    y: min(CPU_FLOOR, aim.y + gauss(rng) * spec.aim),
+    // Never aims below y 390, close to the cables.
+    y: min(390, aim.y + gauss(rng) * spec.aim),
   };
   cpu.dash = dist(me, cpu.target) < spec.dashRange;
 };
 
-const axis = (delta) => (abs(delta) < CPU_DEADZONE ? 0 : sign(delta));
+/** Stick direction toward a target, still within a 10 px dead zone. */
+const axis = (delta) => (abs(delta) < 10 ? 0 : sign(delta));
 
 /** Digital joystick and buttons for the CPU player: a planned JALAR fires once AIRE allows it, and B1 is held
  * while climbing out of a calm. */
@@ -1258,7 +1061,7 @@ const AvatarStore = {
 
 /** Cycles an initial through A-Z, wrapping at both ends. */
 const shiftLetter = (letter, step) =>
-  String.fromCharCode(65 + ((((letter.charCodeAt(0) - 65 + step) % LETTER_COUNT) + LETTER_COUNT) % LETTER_COUNT));
+  String.fromCharCode(65 + ((((letter.charCodeAt(0) - 65 + step) % 26) + 26) % 26));
 
 // ---------------------------------------------------------------------------
 // 9. Avatars (pure)
@@ -1269,7 +1072,6 @@ const SHIRTS = [0xffd23f, 0x3fd2ff, 0xe8432e, 0x2fbf71, 0xe83e9b, 0xf2f2f2];
 // Bodies: 0 chamo, 1 chama, 2 señor (rival only). Hair styles are indices into HAIR_PAINTERS; the first two
 // belong to chamos, the next two to chamas, and the rest are the rivals' own.
 const BODY_NAMES = ['CHAMO', 'CHAMA'];
-const HAIR_NAMES = ['CORTO', 'GORRA', 'COLA', 'MOÑO'];
 const HAIRS_BY_BODY = [
   [0, 1],
   [2, 3],
@@ -1322,7 +1124,7 @@ const cycleChoice = (choice, row, step) => {
 
 /** A look as drawn: body and hair indices, skin and shirt colours, size, kite colour and design (as in
  * KITE_DESIGNS) and hair colour. */
-const look = (body, hair, skin, shirt, scale, color, [panels, accent], hairTone = HAIR_TONES_DARK) =>
+const look = (body, hair, skin, shirt, scale, color, [panels, accent], hairTone = 0x2b1a12) =>
   ({ body, hair, skin, shirt, hairTone, scale, kite: { colors: [color, accent], panels } });
 
 /** What a player's choice looks like on screen. */
@@ -1336,7 +1138,7 @@ const RIVAL_LOOKS = [
   look(0, 5, SKINS[1], 0xd8323c, 1.04, 0xd8323c, ['000111', 0xffd23f]),
   look(1, 6, SKINS[2], 0x2ec4b6, 1, 0x2ec4b6, ['010101', WHITE]),
   look(0, 7, SKINS[1], 0x2f6fd6, 1.12, 0x2f6fd6, ['001001', 0xffd23f]),
-  look(2, 8, SKINS[2], 0xf2ead8, 1.16, 0xff8a1f, ['010101', 0x1c1c1c], HAIR_TONES_WHITE),
+  look(2, 8, SKINS[2], 0xf2ead8, 1.16, 0xff8a1f, ['010101', 0x1c1c1c], HAIR_WHITE),
 ];
 
 const isSolo = (mode) => mode === 'solo';
@@ -1404,12 +1206,12 @@ const posed = (points, x, y, angle, scale = 1) => {
 const createFall = ({ x, y, vx, vy, tail }) => ({ x, y, vx, vy, spin: 0, tail: tail.map((point) => ({ ...point })) });
 
 const stepFall = (fall, weather, dt) => {
-  const damping = exp(-FALL_DRAG * dt);
-  fall.vx = (fall.vx + weather.gust * FALL_DRIFT * dt) * damping;
-  fall.vy = (fall.vy + FALL_GRAVITY * dt) * damping;
+  const damping = exp(-0.6 * dt);
+  fall.vx = (fall.vx + weather.gust * 0.8 * dt) * damping;
+  fall.vy = (fall.vy + 900 * dt) * damping;
   fall.x += fall.vx * dt;
   fall.y += fall.vy * dt;
-  fall.spin += FALL_SPIN * dt * sign(fall.vx || 1);
+  fall.spin += 9 * dt * sign(fall.vx || 1);
   stepTail(fall, weather, dt);
 };
 
@@ -1423,9 +1225,6 @@ const GLYPHS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!?¡¿.,:·-/×()+‹› ';
 const GLYPH_ROWS =
   'ehhvhhhuhhuhhuehgggheuhhhhhuvgguggvvggugggehgnhhfhhhvhhhe44444e72222ichikokihggggggvhrllhhhhhpljhhehhhhheuhhugggehhhliduhhukihfgge11uv444444hhhhhhehhhhha4hhhlllahha4ahhhha4444v1248gvehjlphe4c4444eeh1248vv2421he26aiv22vgu11he68guhhev124888ehhehheehhf12c4444404eh1240440444444048ghe00000cc0000c480cc0cc0000cc00000e00011248gg0ha4ah024888428422248044v440024842008424800000000';
 const ACCENTS = { Á: 'A', É: 'E', Í: 'I', Ó: 'O', Ú: 'U', Ñ: 'N' };
-// The mark above an accented letter, as [x, y] pixels in the two rows over the glyph.
-const MARKS_ACUTE = [[3, 0], [2, 1]];
-const MARKS_TILDE = [[1, 0], [2, 0], [4, 0], [0, 1], [2, 1], [3, 1]];
 const FONT_KEY = 'pixel-font';
 const FONT_CHARS = GLYPHS + Object.keys(ACCENTS).join('');
 
@@ -1438,7 +1237,9 @@ const glyphPixels = (char) => {
     const bits = parseInt(GLYPH_ROWS[index * 7 + row], 32);
     for (let col = 0; col < 5; col += 1) if (bits & (16 >> col)) pixels.push([1 + col, 3 + row]);
   }
-  if (base !== char) (char === 'Ñ' ? MARKS_TILDE : MARKS_ACUTE).forEach(([x, y]) => pixels.push([1 + x, 1 + y]));
+  // The mark above an accented letter (a tilde or an acute), as [x, y] pixels in the two rows over the glyph.
+  const mark = char === 'Ñ' ? [[1, 0], [2, 0], [4, 0], [0, 1], [2, 1], [3, 1]] : [[3, 0], [2, 1]];
+  if (base !== char) mark.forEach(([x, y]) => pixels.push([1 + x, 1 + y]));
   return pixels;
 };
 
@@ -1478,7 +1279,7 @@ const loadFont = (scene) => {
     offset: { x: 0, y: 0 },
   });
   // Outlines of neighbouring letters overlap by a pixel, as on old arcade boards.
-  Object.values(font.data.chars).forEach((char) => (char.xAdvance = FONT_ADVANCE));
+  Object.values(font.data.chars).forEach((char) => (char.xAdvance = 6));
   scene.cache.bitmapFont.add(FONT_KEY, font);
 };
 
@@ -1504,12 +1305,11 @@ const RIDGES = [
   [0x58397a, 0x462e64, 0xff9a84, 228, 118, 190, 150, 0.7, true],
 ];
 const RIDGE_DEPTHS = [0.02, 0.04];
-const CABLE_CAR_CABINS = [0.3, 0.55, 0.8];
 
 /** The Hotel Humboldt: a white round tower with banded floors and a crown, on the summit. */
 const paintHumboldt = (ctx, x, y) => {
   px(ctx, HUMBOLDT_BODY, x - 3, y - 15, 7, 16);
-  for (let floorY = y - 13; floorY < y; floorY += 3) px(ctx, HUMBOLDT_BAND, x - 3, floorY, 7, 1);
+  for (let floorY = y - 13; floorY < y; floorY += 3) px(ctx, 0x9a8fb4, x - 3, floorY, 7, 1);
   px(ctx, HUMBOLDT_BODY, x - 4, y - 17, 9, 2);
   px(ctx, INK, x, y - 23, 1, 6);
 };
@@ -1519,10 +1319,10 @@ const paintCableCar = (ctx, [x0, y0], [x1, y1]) => {
   const at = (t) => [lerp(x0, x1, t), lerp(y0, y1, t) + 10 * t * (1 - t)];
   for (let t = 0; t < 1; t += 0.004) px(ctx, INK, ...at(t));
   [0.2, 0.65].forEach((t) => px(ctx, INK, at(t)[0], at(t)[1], 1, 7));
-  CABLE_CAR_CABINS.forEach((t) => {
+  [0.3, 0.55, 0.8].forEach((t) => {
     const [x, y] = at(t);
     px(ctx, INK, x, y, 1, 2);
-    px(ctx, CABLE_CAR_COLOR, x - 2, y + 2, 5, 4);
+    px(ctx, 0xd8323c, x - 2, y + 2, 5, 4);
     px(ctx, CREAM, x - 1, y + 3, 3, 1);
   });
 };
@@ -1543,7 +1343,8 @@ const paintRidge = ([color, shade, rim, base, peak, centre, spread, rough, landm
   if (!landmarks) return;
   const summit = crest.indexOf(min(...crest));
   paintHumboldt(ctx, summit, crest[summit]);
-  const foot = floor(WIDE * CABLE_CAR_FROM);
+  // The teleférico starts 8 % of the way across, down in the valley.
+  const foot = floor(WIDE * 0.08);
   paintCableCar(ctx, [foot, crest[foot] + 6], [summit - 6, crest[summit] - 4]);
 };
 
@@ -1551,27 +1352,27 @@ const paintRidge = ([color, shade, rim, base, peak, centre, spread, rough, landm
 const RANCHOS = [0xc0603e, 0xd27d4e, 0xe8a85a, 0xd96a8a, 0x5aa0c8, 0x8bc06a, 0xe6d26a, 0xb07ac8];
 
 /** A window: dark glass, or already lit by a fixed pattern. */
-const pane = (ctx, x, y, w = 1, h = 1) => px(ctx, (x * 7 + y * 13) % 9 ? DARK_GLASS : WINDOW_LIT, x, y, w, h);
+const pane = (ctx, x, y, w = 1, h = 1) => px(ctx, (x * 7 + y * 13) % 9 ? 0x2a2440 : 0xffd27a, x, y, w, h);
 
 /** A cerro on one edge of the valley, covered top to bottom in colourful ranchos. */
 const paintCerro = (ctx, rng, side) => {
   const edge = side ? WIDE : 0;
   const inward = side ? -1 : 1;
-  const hill = (x) => CERROS_FOOT - CERROS_RISE * max(0, 1 - abs(x - edge) / CERROS_REACH) ** 1.3;
-  for (let i = 0; i <= CERROS_REACH; i += 1) px(ctx, 0x3a2240, edge + inward * i, hill(edge + inward * i) - 3, 1, PH);
-  range(CERROS_RANCHOS, () => {
-    const x = floor(edge + inward * rng() * CERROS_REACH);
-    return { x, y: floor(roll(rng, [hill(x), CERROS_FOOT + 6])), w: 5 + floor(rng() * 5), h: 4 + floor(rng() * 3) };
+  // The hill reaches 175 px in from its edge and rises 78 px above its foot (y 246); 230 ranchos cover it.
+  const hill = (x) => 246 - 78 * max(0, 1 - abs(x - edge) / 175) ** 1.3;
+  for (let i = 0; i <= 175; i += 1) px(ctx, 0x3a2240, edge + inward * i, hill(edge + inward * i) - 3, 1, PH);
+  range(230, () => {
+    const x = floor(edge + inward * rng() * 175);
+    return { x, y: floor(roll(rng, [hill(x), 252])), w: 5 + floor(rng() * 5), h: 4 + floor(rng() * 3) };
   })
     .sort((a, b) => a.y - b.y)
     .forEach(({ x, y, w, h }) => {
       px(ctx, RANCHOS[floor(rng() * RANCHOS.length)], x, y - h, w, h);
-      px(ctx, RANCHO_ROOF, x - 1, y - h - 1, w + 2, 1);
+      px(ctx, 0x5a3a4a, x - 1, y - h - 1, w + 2, 1);
       pane(ctx, x + 1 + floor(rng() * (w - 2)), y - h + 2);
     });
 };
 
-const CABLES = [-7, 0, 7];
 
 // Per-player rooftop clutter as [wall colour, then x offsets (pixels) from the anchor of the water tank, an
 // antenna or a dish].
@@ -1591,9 +1392,9 @@ const block = (ctx, x, y, w, color) => {
 const paintTank = (ctx, x, roof) => {
   px(ctx, INK, x - 6, roof - 6, 1, 6);
   px(ctx, INK, x + 5, roof - 6, 1, 6);
-  px(ctx, TANK_BODY, x - 7, roof - 19, 14, 13);
-  px(ctx, TANK_LIGHT, x - 4, roof - 19, 2, 13);
-  px(ctx, TANK_DARK, x - 8, roof - 21, 16, 2);
+  px(ctx, 0x2c5aa0, x - 7, roof - 19, 14, 13);
+  px(ctx, 0x5b8fd8, x - 4, roof - 19, 2, 13);
+  px(ctx, 0x1d3d6e, x - 8, roof - 21, 16, 2);
 };
 
 // Painters of the baked textures, by texture key (each El Ávila crest gets its own from paintRidge).
@@ -1610,34 +1411,38 @@ const PAINTERS = {
   /** Flat sky bands from the top down to the horizon, each meeting the next in a checkerboard dither row; band
    * colours blend evenly through the SKY stops. */
   sky: (ctx) => {
-    const band = HORIZON / SKY_BANDS;
-    for (let i = 0; i < SKY_BANDS; i += 1) {
-      const at = (i / (SKY_BANDS - 1)) * (SKY.length - 1);
+    // Twelve bands down to the horizon at y 236.
+    const band = 236 / 12;
+    for (let i = 0; i < 12; i += 1) {
+      const at = (i / 11) * (SKY.length - 1);
       const stop = min(floor(at), SKY.length - 2);
       const color = mix(SKY[stop], SKY[stop + 1], at - stop);
-      px(ctx, color, 0, floor(i * band), PW, i === SKY_BANDS - 1 ? PH : ceil(band));
+      px(ctx, color, 0, floor(i * band), PW, i === 11 ? PH : ceil(band));
       for (let x = 0; x < PW; x += 2) px(ctx, color, x, floor(i * band) - 1);
     }
   },
   /** The low sun: soft rings around a bright core. */
-  sun: (ctx) => SUN_RINGS.forEach(([r, color, alpha]) => disc(ctx, color, SUN_SIZE / 2, SUN_SIZE / 2, r, alpha)),
+  sun: (ctx) => SUN_RINGS.forEach(([r, color, alpha]) => disc(ctx, color, 24, 24, r, alpha)),
   /** The mid-distance city: the cerros of ranchos on both sides, leaving El Ávila open in the middle. */
   city: (ctx, rng) => [0, 1].forEach((side) => paintCerro(ctx, rng, side)),
   /** Wooden poles with crossbars and three sagging cables, stepped pixel by pixel. */
   wires: (ctx) => {
     const [from, to] = [POWER_LINE_FROM, POWER_LINE_TO].map((x) => x / PIXEL);
     [from, to].forEach((x) => {
-      px(ctx, WIRE, x - 2, POLE_TOP, 4, PH);
-      px(ctx, WIRE, x - POLE_BAR / 2, POLE_TOP + 3, POLE_BAR, 2);
+      // Poles from y 223 down, with a 27 px crossbar near the top.
+      px(ctx, WIRE, x - 2, 223, 4, PH);
+      px(ctx, WIRE, x - 13.5, 226, 27, 2);
     });
-    CABLES.forEach((offset) => {
+    // Three cables, 7 px apart.
+    [-7, 0, 7].forEach((offset) => {
       for (let x = from; x <= to; x += 1) px(ctx, WIRE, x, (wireY(x * PIXEL) + offset) / PIXEL);
     });
   },
   /** The two flyers' azoteas with their clutter, the blocks under the cables and frame blocks at the edges. */
   azoteas: (ctx, rng) => {
     const roof = ROOF_Y / PIXEL;
-    const deck = DECK / PIXEL;
+    // Azoteas seen slightly from above: the kid stands on the front edge (y 572) of a deck whose back edge is ROOF_Y.
+    const deck = 572 / PIXEL;
     for (let x = POWER_LINE_FROM / PIXEL; x < POWER_LINE_TO / PIXEL - 15; x += 25 + floor(rng() * 5)) {
       block(ctx, x, 274 + rng() * 13, 23, 0x4a2a44);
     }
@@ -1679,14 +1484,16 @@ class Backdrop {
     loadFont(scene);
     const image = (key, width = PW, paint) => scene.add.image(0, 0, bake(scene, key, width, PH, paint)).setOrigin(0).setScale(PIXEL);
     image('sky');
-    scene.add.image(SUN_X, SUN_Y, bake(scene, 'sun', SUN_SIZE, SUN_SIZE)).setScale(PIXEL).setBlendMode('ADD');
-    this.parallax = [...RIDGES.map((ridge, i) => [image(`ridge-${i}`, WIDE, paintRidge(ridge)), RIDGE_DEPTHS[i]]), [image('city', WIDE), CITY_DEPTH]];
+    // The 48 px sun sits low over the left cerros.
+    scene.add.image(150, 250, bake(scene, 'sun', 48, 48)).setScale(PIXEL).setBlendMode('ADD');
+    // The nearer city slides more than El Ávila (RIDGE_DEPTHS).
+    this.parallax = [...RIDGES.map((ridge, i) => [image(`ridge-${i}`, WIDE, paintRidge(ridge)), RIDGE_DEPTHS[i]]), [image('city', WIDE), 0.09]];
     image('wires');
     this.addForeground = () => image('azoteas');
   }
 
   update(focusX) {
-    this.parallax.forEach(([image, depth]) => image.setX(-PARALLAX + (W / 2 - focusX) * depth));
+    this.parallax.forEach(([image, depth]) => image.setX(-40 + (W / 2 - focusX) * depth));
   }
 }
 
@@ -1725,7 +1532,7 @@ class Breeze {
         const trace = WIND_PARTICLES_TRACE * pace;
         g.lineStyle(2, CREAM, 0.6).lineBetween(x, y, x - drift.vx * trace, y - drift.vy * trace);
       } else if (dust) {
-        rect(g, RIM, x, y, PIXEL, PIXEL, 0.6);
+        rect(g, 0xffa25e, x, y, PIXEL, PIXEL, 0.6);
       } else {
         // A papelito flips between its face and its edge as it tumbles.
         const flat = sin(spin) > 0;
@@ -1742,7 +1549,7 @@ const vulture = (g, x, y, flap, scale) => {
   g.fillStyle(ZAMURO_INK);
   [-1, 1].forEach((side) => {
     g.fillTriangle(x, y - 3 * scale, x + side * span, tipY, x + side * 5 * scale, y + 4 * scale);
-    rect(g, ZAMURO_TIP, x + side * span - (side > 0 ? 6 : 0) * scale, tipY - 2, 6 * scale, 4);
+    rect(g, 0xcfc6bd, x + side * span - (side > 0 ? 6 : 0) * scale, tipY - 2, 6 * scale, 4);
     g.fillStyle(ZAMURO_INK);
   });
   g.fillEllipse(x, y + scale, 16 * scale, 8 * scale);
@@ -1752,8 +1559,6 @@ const vulture = (g, x, y, flap, scale) => {
 /** The kids on both azoteas. */
 const drawRooftops = (g, flyers) => flyers.forEach((flyer, player) => avatar(g, flyer.look, flyer.stance(ANCHORS[player])));
 
-// One-pixel ink outline around every figure: the figure drawn in ink, nudged one pixel each way.
-const OUTLINE = [[-1, 0], [1, 0], [0, -1], [0, 1]];
 
 /** Per-player art state: the kid's look and animation, and the tumble of a kite it just lost. */
 class Flyer {
@@ -1766,7 +1571,7 @@ class Flyer {
   }
 
   /** Celebrates (or sulks) for a while; an endless cheer closes the match. */
-  cheer(mood, seconds = CHEER_S) {
+  cheer(mood, seconds = 1.2) {
     assign(this, { cheering: mood, cheerTime: seconds });
   }
 
@@ -1775,14 +1580,14 @@ class Flyer {
     this.clock += dt;
     this.cheerTime -= dt;
     this.mood = this.cheerTime > 0 ? this.cheering : null;
-    this.lift = this.mood === 'win' ? abs(sin(this.clock * 9)) * KID_JUMP : 0;
+    this.lift = this.mood === 'win' ? abs(sin(this.clock * 9)) * 16 : 0;
   }
 
   /** Follows its kite: the arm yanks on JALAR and stays up while B1 is held. */
   update(kite, dt) {
     this.pose(dt);
     this.holding = kite.holding;
-    this.yank = kite.holding ? 1 : max(0, this.yank - dt * YANK_DECAY);
+    this.yank = kite.holding ? 1 : max(0, this.yank - dt * 4);
   }
 
   /** The string hand: on the anchor at rest, yanked back and up on JALAR. */
@@ -1794,7 +1599,8 @@ class Flyer {
   stance(anchor) {
     const { side, mood, lift, yank, clock } = this;
     const expression = mood || (this.holding || yank > 0.5 ? 'effort' : 'focus');
-    return { x: anchor.x - side * KID_BACK, y: KID_FOOT, scale: KID_SCALE, side, mood, expression, lift, yank, clock, hand: this.hand({ anchor }) };
+    // On the front edge of the deck, 18 px behind the string hand and larger than life.
+    return { x: anchor.x - side * 18, y: 570, scale: 1.45, side, mood, expression, lift, yank, clock, hand: this.hand({ anchor }) };
   }
 }
 
@@ -1815,8 +1621,8 @@ const HAIR_PAINTERS = [
   // LA GOCHA: a striped ruana over the shoulders and a wool hat with a pompom.
   (g, x, y, s, tone, dye) => {
     const poncho = [[-10, 12], [10, 12], [18, 42], [-18, 42]].map(([dx, dy]) => ({ x: x + dx, y: y + dy }));
-    g.fillStyle(dye(HEADGEAR_RUANA)).fillPoints(poncho, true).fillStyle(dye(HEADGEAR_STRIPE)).fillRect(x - 16, y + 32, 32, 3);
-    cap(g, x, y, tone).fillStyle(dye(HEADGEAR_WOOL)).fillEllipse(x, y - 7, 23, 14).fillStyle(dye(HEADGEAR_CAP)).fillCircle(x, y - 15, 4);
+    g.fillStyle(dye(0x8a3a8a)).fillPoints(poncho, true).fillStyle(dye(0xffd23f)).fillRect(x - 16, y + 32, 32, 3);
+    cap(g, x, y, tone).fillStyle(dye(0xf2f2f2)).fillEllipse(x, y - 7, 23, 14).fillStyle(dye(HEADGEAR_CAP)).fillCircle(x, y - 15, 4);
   },
   // EL GUARO: a mop of curls.
   (g, x, y, s, tone) => [-8, -4, 0, 4, 8, -5, 2].forEach((ox, i) => g.fillStyle(tone).fillCircle(x + ox, y - (i < 5 ? 6 : 11), 5)),
@@ -1824,7 +1630,7 @@ const HAIR_PAINTERS = [
   (g, x, y, s, tone, dye) =>
     cap(g, x, y, tone)
       .fillRect(min(x - s * 3, x - s * 13), y - 6, 10, 24)
-      .fillStyle(dye(HEADGEAR_FLOWER))
+      .fillStyle(dye(0xff5d8f))
       .fillCircle(x - s * 7, y - 8, 3.5),
   // EL MARACUCHO: spiky hair.
   (g, x, y, s, tone) => {
@@ -1834,8 +1640,8 @@ const HAIR_PAINTERS = [
   // DON GOYO: white sideburns under a sombrero.
   (g, x, y, s, tone, dye) => {
     g.fillStyle(tone).fillRect(x - s * 10 - 1.5, y - 7, 3, 7);
-    g.fillStyle(dye(HEADGEAR_HAT)).fillRoundedRect(x - 8, y - 19, 16, 11, 4).fillEllipse(x, y - 8, 34, 7);
-    rect(g, dye(HEADGEAR_BAND), x - 8, y - 11, 16, 2);
+    g.fillStyle(dye(0x8a6a3a)).fillRoundedRect(x - 8, y - 19, 16, 11, 4).fillEllipse(x, y - 8, 34, 7);
+    rect(g, dye(0x3b2414), x - 8, y - 11, 16, 2);
   },
 ];
 
@@ -1844,14 +1650,14 @@ const drawFace = (g, { x, y }, side, expression, old) => {
   const ex = x + side * 2;
   const eyes = [ex - 4, ex + 3];
   const brow = { focus: 1, effort: 2, win: -1, lose: -2 }[expression];
-  g.fillStyle(FACE_INK);
+  g.fillStyle(0x2a1810);
   eyes.forEach((eye, i) => g.fillRect(eye - 1, y - 6 + (i ? brow : -brow), 3, 1.5));
   // Eyes squint to a line when winning or straining, and stay open otherwise.
   const squint = { win: 2, effort: 1 }[expression];
   eyes.forEach((eye) => (squint ? g.fillRect(eye - 1, y - squint, 3, 1.5) : g.fillRect(eye, y - 3, 2, 3)));
   if (expression === 'win') {
     g.fillRect(ex - 4, y + 2, 8, 4).fillStyle(WHITE).fillRect(ex - 3, y + 2, 6, 1.5);
-    rect(g, FACE_BLUSH, ex - 8, y, 3, 2).fillRect(ex + 6, y, 3, 2);
+    rect(g, 0xff7a8a, ex - 8, y, 3, 2).fillRect(ex + 6, y, 3, 2);
   } else if (expression === 'effort') {
     g.fillRect(ex - 3, y + 3, 6, 3).fillStyle(WHITE).fillRect(ex - 3, y + 3, 6, 1.5);
     // A drop of sweat at the temple, pointed on top.
@@ -1861,10 +1667,12 @@ const drawFace = (g, { x, y }, side, expression, old) => {
     g.fillRect(ex - 3, y + 4, 6, 1.5).fillRect(ex - 4, y + 5.5, 2, 1.5).fillRect(ex + 2, y + 5.5, 2, 1.5);
     rect(g, FACE_TEAR, eyes[1], y, 2, 4);
   } else g.fillRect(ex - 2, y + 4, 4, 1.5);
-  if (old) rect(g, HAIR_TONES_WHITE, ex - 5, y + 2, 10, 3);
+  if (old) rect(g, HAIR_WHITE, ex - 5, y + 2, 10, 3);
 };
 
-/** One pass of a figure in local units: in its own colours with its face, or all in ink for an outline pass. */
+/** One pass of a figure in local units: in its own colours with its face, or all in ink for an outline pass.
+ * Feet are at y 0 and up is negative; the head sits 8 px above the shoulders, so it always rests on the collar (a
+ * slump or a hunch only sinks it lower). */
 const figure = (g, look, pose, hand, ink) => {
   const { side: s, mood, lift, yank } = pose;
   const chama = look.body === 1;
@@ -1872,13 +1680,13 @@ const figure = (g, look, pose, hand, ink) => {
   const dye = (color) => (ink ? INK : color);
   const skin = dye(look.skin);
   const cloth = dye(look.shirt);
-  const pants = dye(chama ? mix(look.shirt, INK, 0.45) : PANTS);
-  const slump = mood === 'lose' ? KID_SLUMP : 0;
-  const hunch = old ? FIGURE_HUNCH : 0;
+  const pants = dye(chama ? mix(look.shirt, INK, 0.45) : 0x2c3550);
+  const slump = mood === 'lose' ? 6 : 0;
+  const hunch = old ? 5 : 0;
   const lean = -s * yank * 5 + s * hunch;
-  const hip = FIGURE_HIP - lift;
-  const shoulder = FIGURE_SHOULDER - lift + slump + hunch * 0.6;
-  const head = { x: lean + s * (slump * 0.6 + hunch * 1.2), y: FIGURE_HEAD - lift + slump * 2 + hunch };
+  const hip = -28 - lift;
+  const shoulder = -58 - lift + slump + hunch * 0.6;
+  const head = { x: lean + s * (slump * 0.6 + hunch * 1.2), y: -66 - lift + slump * 2 + hunch };
   const width = chama ? 14 : old ? 20 : 18;
   g.lineStyle(old ? 7 : chama ? 4.5 : 6, old ? pants : skin);
   g.lineBetween(-5, 0, -3, hip).lineBetween(5, 0, 3, hip);
@@ -1886,7 +1694,7 @@ const figure = (g, look, pose, hand, ink) => {
   else rect(g, pants, -8, hip - 2, 16, old ? 6 : 10);
   rect(g, cloth, lean / 2 - width / 2, shoulder, width, hip - shoulder + 2);
   if (old) g.fillEllipse(lean / 2 + s * 4, hip - 10, 18, 16);
-  g.fillStyle(skin).fillCircle(head.x, head.y, FIGURE_HEAD_R);
+  g.fillStyle(skin).fillCircle(head.x, head.y, 10);
   HAIR_PAINTERS[look.hair](g, head.x, head.y, s, dye(look.hairTone), dye, pose.clock);
   if (!ink) drawFace(g, head, s, pose.expression, old);
   const from = { x: lean + s * 5, y: shoulder + 3 };
@@ -1899,7 +1707,8 @@ const figure = (g, look, pose, hand, ink) => {
   // The cheering arm goes up beside the head, on the kite side, clear of the face.
   if (mood === 'win') arm({ x: head.x + s * 26, y: head.y - 20 + sin(pose.clock * 12) * 4 });
   else if (mood === 'lose') arm({ x: -s * 8, y: hip + 10 });
-  else arm({ x: hand.x - s * KID_GRIP, y: hand.y + 9 });
+  // Otherwise the other hand holds the line 10 px behind the string hand.
+  else arm({ x: hand.x - s * 10, y: hand.y + 9 });
 };
 
 /**
@@ -1911,7 +1720,8 @@ const avatar = (g, look, pose) => {
   const hand = { x: (pose.hand.x - pose.x) / scale, y: (pose.hand.y - pose.y) / scale };
   const nudge = PIXEL / scale;
   g.save().translateCanvas(pose.x, pose.y).scaleCanvas(scale, scale);
-  OUTLINE.forEach(([dx, dy]) => {
+  // One-pixel ink outline around every figure: the figure drawn in ink, nudged one pixel each way.
+  [[-1, 0], [1, 0], [0, -1], [0, 1]].forEach(([dx, dy]) => {
     g.save().translateCanvas(dx * nudge, dy * nudge);
     figure(g, look, pose, hand, true);
     g.restore();
@@ -1921,7 +1731,6 @@ const avatar = (g, look, pose) => {
 };
 
 const KITE_POINTS = [[0, -44], [25, -12], [19, 17], [0, 26], [-19, 17], [-25, -12]];
-const KITE_HUB = [0, -6];
 
 /** Traditional papagayo in flat pixel colours: paper panels, varillas and a thick ink outline. */
 const papagayo = (g, x, y, angle, scale, { colors, panels }, filled = true) => {
@@ -1931,13 +1740,14 @@ const papagayo = (g, x, y, angle, scale, { colors, panels }, filled = true) => {
     g.lineStyle(2, CREAM, 0.7).strokePoints(corners, true);
     return;
   }
-  const [hub] = posed([KITE_HUB], x, y, angle, scale);
+  // The varillas cross at the hub, where every panel meets.
+  const [hub] = posed([[0, -6]], x, y, angle, scale);
   corners.forEach((corner, i) => {
     const next = corners[(i + 1) % corners.length];
     g.fillStyle(colors[panels[i]]).fillTriangle(hub.x, hub.y, corner.x, corner.y, next.x, next.y);
   });
   g.lineStyle(max(2, 4 * scale), INK).strokePoints(corners, true);
-  g.lineStyle(2, STICK)
+  g.lineStyle(2, 0x4a2c18)
     .lineBetween(corners[0].x, corners[0].y, corners[3].x, corners[3].y)
     .lineBetween(corners[5].x, corners[5].y, corners[1].x, corners[1].y);
 };
@@ -1945,14 +1755,14 @@ const papagayo = (g, x, y, angle, scale, { colors, panels }, filled = true) => {
 const kiteAngle = (kite, flyer) =>
   atan2(kite.y - kite.anchor.y, kite.x - kite.anchor.x) +
   PI / 2 +
-  kite.vx * FLUTTER_LEAN +
-  sin(flyer.clock * FLUTTER_RATE + flyer.player * 2) * FLUTTER_SWING +
-  kite.stun * SPIN_RATE;
+  kite.vx * 0.0015 +
+  sin(flyer.clock * 9 + flyer.player * 2) * 0.05 +
+  kite.stun * 18;
 
 /** Where the frenillo meets the string, a little in front of the kite toward the kid. */
 const bridleKnot = (kite) => {
   const [ux, uy] = unit(kite.anchor.x - kite.x, kite.anchor.y - kite.y);
-  return { x: kite.x + ux * BRIDLE, y: kite.y + uy * BRIDLE };
+  return { x: kite.x + ux * 16, y: kite.y + uy * 16 };
 };
 
 /** String from the kid's hand to the bridle, one pixel wide with an ink edge; frayed, it pulses red and sheds
@@ -1992,7 +1802,7 @@ const drawTail = (g, kite, [a, b], shimmer = 1) => {
   // VIDRIO: ground glass glued on the blade glows.
   if (kite.vidrio) g.lineStyle(14, GLASS, 0.4 + 0.3 * shimmer).strokePoints(blade);
   g.lineStyle(6, INK).strokePoints(blade);
-  g.lineStyle(2, STEEL).strokePoints(blade);
+  g.lineStyle(2, 0xe8eef7).strokePoints(blade);
   g.fillStyle(WHITE);
   blade.slice(1).forEach(({ x, y }, i) => {
     const [dx, dy] = unit(x - blade[i].x, y - blade[i].y);
@@ -2003,19 +1813,17 @@ const drawTail = (g, kite, [a, b], shimmer = 1) => {
   rect(g, WHITE, tip.x - 4, tip.y - 1, 8, 2, shimmer).fillRect(tip.x - 1, tip.y - 4, 2, 8);
 };
 
-const BOLT_ICON = [[2, -12], [-6, 2], [0, 2], [-2, 12], [6, -2], [0, -2]];
 
 /** The NYLON shield: a pulsing bubble around the kite. */
 const drawShield = (g, kite, clock) => kite.nylon && g.lineStyle(2, GLASS, 0.6 + 0.3 * sin(clock * 8)).strokeCircle(kite.x, kite.y, 42);
 
-/** A floating power box: a wooden crate with its power's icon, bobbing on the wind. */
+/** A floating power box: a 32 px wooden crate with its power's icon, bobbing on the wind. */
 const crate = (g, { x, y, kind }, clock) => {
   const by = y + round(sin(clock * 3 + x) * 3) * PIXEL;
-  const half = CRATE_SIZE / 2;
-  rect(g, INK, x - half - 2, by - half - 2, CRATE_SIZE + 4, CRATE_SIZE + 4).fillStyle(CRATE_WOOD).fillRect(x - half, by - half, CRATE_SIZE, CRATE_SIZE);
-  g.lineStyle(2, CRATE_EDGE).strokeRect(x - half + 3, by - half + 3, CRATE_SIZE - 6, CRATE_SIZE - 6);
+  rect(g, INK, x - 18, by - 18, 36, 36).fillStyle(0xb06a32).fillRect(x - 16, by - 16, 32, 32);
+  g.lineStyle(2, 0x6a3a1a).strokeRect(x - 13, by - 13, 26, 26);
   if (kind === 'vidrio') g.fillStyle(GLASS).fillTriangle(x, by - 11, x + 7, by + 3, x - 5, by + 10).fillStyle(WHITE).fillRect(x - 1, by - 5, 3, 3);
-  else if (kind === 'turbo') g.fillStyle(TURBO_BOLT).fillPoints(posed(BOLT_ICON, x, by, 0), true);
+  else if (kind === 'turbo') g.fillStyle(0xffd23f).fillPoints(posed([[2, -12], [-6, 2], [0, 2], [-2, 12], [6, -2], [0, -2]], x, by, 0), true);
   else if (kind === 'nylon') g.lineStyle(4, GLASS).strokeCircle(x, by, 8);
   else vulture(g, x, by, sin(clock * 12), 0.5);
 };
@@ -2052,7 +1860,7 @@ class Fx {
 
   /** A big burst of sparks: warm for a cut, cold for the cables. */
   burst(kind, x, y) {
-    this.sparks(BURST_SPARKS, x, y, kind);
+    this.sparks(45, x, y, kind);
   }
 }
 
@@ -2065,9 +1873,6 @@ const createAudioContext = () => {
 };
 
 const hz = (midi) => 440 * 2 ** ((midi - 69) / 12);
-// A bright D major flourish for every point won, and a rising one for a power.
-const JINGLE = [62, 66, 69, 74];
-const POWER_UP = [69, 76, 81];
 // Most voices go through a lowpass filter.
 const LOWPASS = 'lowpass';
 // Each sound is a list of voices: [wave or 'noise', frequency, filter type, filter sweep from, to, gain, seconds,
@@ -2080,8 +1885,9 @@ const SOUNDS = {
   crackle: [['sawtooth', 55, LOWPASS, 2500, 300, 0.25, 0.5, 0, 0.02]],
   thud: [['sine', 70, LOWPASS, 300, 300, 0.5, 0.35]],
   go: [['triangle', 880, LOWPASS, 4000, 4000, 0.2, 0.15]],
-  jingle: notes(JINGLE, 0.3),
-  power: notes(POWER_UP, 0.25),
+  // A bright D major flourish for every point won, and a rising one for a power.
+  jingle: notes([62, 66, 69, 74], 0.3),
+  power: notes([69, 76, 81], 0.25),
 };
 // Chiptune under the action, in sixteenth steps (16 per bar). The lead's hook is four bars of A minor (Am F C G),
 // played twice with a cadence bar closing the second pass; one letter per step is a note ('a' = A4, a semitone
@@ -2090,10 +1896,6 @@ const CHIP_STEP = { calm: 0.1, duel: 0.094, hot: 0.082 };
 const LEAD = ['m.hm.pom.k.h.fh.', 'i.di.mki.h.d.fh.', 'h.kp.opr.p.k.hk.', 'o.kf.kor.rpomkhf', 'h.ko.m.km...m...'];
 const PHRASE = [0, 1, 2, 3, 0, 1, 2, 4];
 const ROOTS = [45, 41, 48, 43, 45];
-// Drum voices (the noise channel, plus a low sine kick).
-const DRUMS_KICK = ['sine', 55, LOWPASS, 200, 200, 0.8, 0.12];
-const DRUMS_SNARE = ['noise', 0, 'bandpass', 1800, 900, 0.45, 0.12];
-const DRUMS_HAT = ['noise', 0, 'highpass', 8000, 8000, 0.12, 0.03];
 
 /** Light synthesised SFX and the chiptune; silent without an AudioContext and never needed to play. */
 const synth = (ctx) => {
@@ -2110,7 +1912,7 @@ const synth = (ctx) => {
   window.addEventListener('keydown', () => ctx.state === 'suspended' && ctx.resume());
 
   /** One voice through a sweeping filter and a fading gain, at `start` (s, audio clock) into `out`. */
-  const voice = ([wave, frequency, type, from, to, gain, duration, delay = 0, attack = ATTACK], start = ctx.currentTime + delay, out = master) => {
+  const voice = ([wave, frequency, type, from, to, gain, duration, delay = 0, attack = 0.006], start = ctx.currentTime + delay, out = master) => {
     const source = wave === 'noise' ? assign(ctx.createBufferSource(), { buffer: noise }) : assign(ctx.createOscillator(), { type: wave });
     if (frequency) source.frequency.value = frequency;
     const filter = assign(ctx.createBiquadFilter(), { type });
@@ -2135,7 +1937,7 @@ const synth = (ctx) => {
     const hot = mood === 'hot';
     next = max(next, ctx.currentTime + 0.05);
     // One sixteenth per pass: square lead, bouncing triangle bass on the eighths, and the drums (busier when hot).
-    for (; next < ctx.currentTime + CHIP_AHEAD; next += step, count += 1) {
+    for (; next < ctx.currentTime + 0.3; next += step, count += 1) {
       const at = count % 16;
       const bar = PHRASE[floor(count / 16) % PHRASE.length];
       const line = LEAD[bar];
@@ -2146,11 +1948,12 @@ const synth = (ctx) => {
         play(['square', hz(line.charCodeAt(at) - 28 + (hot ? 12 : 0)), LOWPASS, 4000, 1500, hot ? 0.12 : 0.16, hold * step * 0.9]);
       }
       if (at % 2 === 0) play(['triangle', hz(ROOTS[bar] + (at % 4 ? 12 : 0)), LOWPASS, 1200, 600, 0.5, step * 1.8]);
-      if (at % (hot ? 4 : 8) === 0) play(DRUMS_KICK);
-      if (mood !== 'calm' && (at % 8 === 4 || (hot && bar === 3 && at > 11))) play(DRUMS_SNARE);
-      if (hot || at % 2 === 0) play(DRUMS_HAT);
+      // Drums: a low sine kick, then snare and hi-hat on the noise channel.
+      if (at % (hot ? 4 : 8) === 0) play(['sine', 55, LOWPASS, 200, 200, 0.8, 0.12]);
+      if (mood !== 'calm' && (at % 8 === 4 || (hot && bar === 3 && at > 11))) play(['noise', 0, 'bandpass', 1800, 900, 0.45, 0.12]);
+      if (hot || at % 2 === 0) play(['noise', 0, 'highpass', 8000, 8000, 0.12, 0.03]);
     }
-  }, CHIP_EVERY);
+  }, 50);
 
   return {
     play: (name) => SOUNDS[name].forEach((spec) => voice(spec)),
@@ -2159,7 +1962,7 @@ const synth = (ctx) => {
       if (name === mood) return;
       if (!mood) count = 0;
       mood = name;
-      band.gain.setTargetAtTime(name ? CHIP_LEVEL : 0, ctx.currentTime, 0.05);
+      band.gain.setTargetAtTime(name ? 0.42 : 0, ctx.currentTime, 0.05);
     },
   };
 };
@@ -2209,8 +2012,6 @@ const stepBanner = (banner, dt) => {
   if (banner.left <= 0) assign(banner, { shout: banner.queue.shift() || null, left: BANNER_SECONDS });
   return banner.shout;
 };
-// Without an AudioContext the SFX stay silent: the title's attract demo plays through this one.
-const SILENCE = synth(null);
 const EVENT_SOUNDS = { go: 'go', dash: 'whoosh', power: 'power', shield: 'power' };
 
 /** Tints every letter from cream at the top into `color` at the bottom: chunky arcade banner type. */
@@ -2221,20 +2022,20 @@ const clockText = (seconds) => `${floor(seconds / 60)}:${String(floor(seconds % 
 /** Names, score (TIEMPO) or kites left (VIDAS), AIRE meters, active powers, the clock and the centre banner. */
 class Hud {
   constructor(scene, names, kites, rules) {
-    assign(this, { kites, rules, slot: createBanner(), refusedAt: [-REFUSE_S, -REFUSE_S], clock: 0 });
+    assign(this, { kites, rules, slot: createBanner(), refusedAt: [-0.3, -0.3], clock: 0 });
     this.g = scene.add.graphics();
     const side = (player, x) => (player ? W - x : x);
     // One text per player, aligned to its own screen edge.
     const edges = (y, texts, size, colors) =>
-      texts.map((text, player) => txt(scene, side(player, HUD_MARGIN), y, text, size, colors[player]).setOrigin(player, 0.5));
-    const tags = edges(HUD_NAME_Y, names, 1, PLAYER_COLORS);
-    this.scores = edges(HUD_SCORE_Y, ['', ''], 2, []);
-    this.powers = edges(HUD_POWER_Y, ['', ''], 1, [GLASS, GLASS]);
-    this.time = mid(scene, HUD_CLOCK_Y, '', 2);
+      texts.map((text, player) => txt(scene, side(player, 24), y, text, size, colors[player]).setOrigin(player, 0.5));
+    const tags = edges(24, names, 1, PLAYER_COLORS);
+    this.scores = edges(56, ['', ''], 2, []);
+    this.powers = edges(104, ['', ''], 1, [GLASS, GLASS]);
+    this.time = mid(scene, 30, '', 2);
     // Banners sit above the fight (which happens around y 150-350) so they never hide a cut.
     this.banner = mid(scene, 124, '', 3);
     this.detail = mid(scene, 168, '', 1);
-    this.left = (player) => side(player, HUD_MARGIN + (player ? HUD_METER_W : 0));
+    this.left = (player) => side(player, 24 + (player ? HUD_METER_W : 0));
     this.objects = [this.g, ...tags, ...this.scores, ...this.powers, this.time, this.banner, this.detail];
   }
 
@@ -2273,7 +2074,7 @@ class Hud {
     const counting = duel.phase === 'countdown';
     if (counting) {
       const goal = isTimed(duel) ? `MÁS PUNTOS EN ${clockText(MATCH_TIME)}` : `${MATCH_LIVES} PAPAGAYOS CADA UNO`;
-      this.show(String(ceil((duel.clock / MATCH_COUNTDOWN) * COUNTDOWN_STEPS)), goal, GOLD);
+      this.show(String(ceil((duel.clock / MATCH_COUNTDOWN) * 3)), goal, GOLD);
     } else if (shout) this.show(shout.text, shout.detail, shout.color);
     else if (cue) {
       // A wind cue is smaller and blinks.
@@ -2287,16 +2088,17 @@ class Hud {
 
   drawPlayer(g, duel, kite, player) {
     const left = this.left(player);
-    const refused = this.clock - this.refusedAt[player] < REFUSE_S;
+    const refused = this.clock - this.refusedAt[player] < 0.3;
     if (isTimed(duel)) this.scores[player].setText(String(duel.score[player]));
     else {
       for (let pip = 0; pip < MATCH_LIVES; pip += 1) {
-        papagayo(g, left + 10 + pip * HUD_PIP_GAP, HUD_SCORE_Y, 0, HUD_PIP_SCALE, this.kites[player], pip < duel.lives[player]);
+        papagayo(g, left + 10 + pip * 30, 56, 0, 0.36, this.kites[player], pip < duel.lives[player]);
       }
     }
     const ready = canPull(kite);
-    rect(g, INK, left - 4, HUD_METER_Y - 4, HUD_METER_W + 8, HUD_METER_H + 8);
-    rect(g, refused ? DANGER : ready ? PLAYER_COLORS[player] : DIM, left, HUD_METER_Y, floor((HUD_METER_W * kite.air) / PIXEL) * PIXEL, HUD_METER_H);
+    // The AIRE meter: 10 px tall at y 84, in an ink frame.
+    rect(g, INK, left - 4, 80, HUD_METER_W + 8, 18);
+    rect(g, refused ? DANGER : ready ? PLAYER_COLORS[player] : DIM, left, 84, floor((HUD_METER_W * kite.air) / PIXEL) * PIXEL, 10);
     const power = POWERS.find((kind) => kite[kind]);
     this.powers[player].setText(power ? `${power.toUpperCase()} ${power === 'nylon' ? '' : ceil(kite[power])}` : '');
   }
@@ -2343,7 +2145,8 @@ class View extends City {
   constructor(scene, names, looks, rules) {
     super(scene, looks);
     this.attract = !names;
-    this.audio = this.attract ? SILENCE : sfx;
+    // Without an AudioContext the SFX stay silent: the title's attract demo plays through one.
+    this.audio = this.attract ? synth(null) : sfx;
     this.camera = scene.cameras.main;
     this.fx = new Fx(scene);
     if (names) {
@@ -2359,7 +2162,7 @@ class View extends City {
     this.clock += dt;
     // The city feels the wind before the kites do: everything decorative shows the coming weather.
     const ahead = windAt(duel, duel.elapsed + WIND_LEAD);
-    this.focus = lerp(this.focus, (duel.kites[0].x + duel.kites[1].x) / 2, min(1, dt * FOCUS_EASE));
+    this.focus = lerp(this.focus, (duel.kites[0].x + duel.kites[1].x) / 2, min(1, dt * 2));
     this.flyers.forEach((flyer, player) => {
       flyer.update(duel.kites[player], dt);
       if (flyer.fall) stepFall(flyer.fall, ahead, dt);
@@ -2475,7 +2278,7 @@ class Menu {
     this.onSelect = onSelect;
     this.index = 0;
     this.locked = false;
-    this.items = items.map((text, i) => txt(scene, x, y + i * MENU_GAP, text, 2));
+    this.items = items.map((text, i) => txt(scene, x, y + i * 48, text, 2));
     this.cursor = scene.add.triangle(0, 0, 0, 0, 16, 10, 0, 20, GOLD).setStrokeStyle(4, INK);
     pulse(scene, this.cursor, { scaleX: 0.5 }, 260);
     this.highlight();
@@ -2529,12 +2332,13 @@ const keyed = (key, methods, Base = Phaser.Scene) => {
 
 /** Top-five table in the bottom panel; returns show(), which repaints it and can highlight one rank. */
 const board = (scene, entries = Leaderboard.sanitize(null), highlight = -1) => {
-  panel(scene, BOARD_X, BOARD_Y, BOARD_WIDTH, BOARD_HEIGHT);
-  mid(scene, BOARD_Y + 24, 'MEJORES PAPAGAYEROS', 1, GOLD);
-  const rows = range(LEADERBOARD_SIZE, (i) => mid(scene, BOARD_Y + BOARD_FIRST_ROW + i * BOARD_ROW, ''));
+  panel(scene, 110, 420, 580, 146);
+  mid(scene, 444, 'MEJORES PAPAGAYEROS', 1, GOLD);
+  // Rows 19 px apart; scores right-aligned in 7 characters.
+  const rows = range(LEADERBOARD_SIZE, (i) => mid(scene, 468 + i * 19, ''));
   const show = (list) =>
     list.forEach(({ name, score }, i) => {
-      rows[i].setText(`${i + 1}. ${name} ${String(score).padStart(BOARD_SCORE_WIDTH)}`).setTint(i === highlight ? PLAYER_COLORS[0] : CREAM);
+      rows[i].setText(`${i + 1}. ${name} ${String(score).padStart(7)}`).setTint(i === highlight ? PLAYER_COLORS[0] : CREAM);
       if (i === highlight) pulse(scene, rows[i], { alpha: 0.3 }, 260);
     });
   show(entries);
@@ -2585,7 +2389,7 @@ class Loop {
     const frozen = this.hitstop > 0;
     this.hitstop -= dt;
     if (!frozen) {
-      this.lag = min(this.lag + dt, MAX_LAG);
+      this.lag = min(this.lag + dt, 0.1);
       while (this.lag >= DT) {
         this.lag -= DT;
         this.tick();
@@ -2602,20 +2406,16 @@ class Loop {
     });
     for (const event of stepDuel(this.duel, inputs, DT)) {
       this.view.react(event, this.duel);
-      if (event.cause === 'cut') this.hitstop = SHOT_HITSTOP;
+      if (event.cause === 'cut') this.hitstop = 0.15;
       this.listen(event);
     }
   }
 }
 
 // The attract demo: two CPU sparring partners fight behind the menu (bolder than any ladder rival, so a point
-// comes every few seconds) and start over after each match. Left idle for `idleMs`, the title plays the opening.
+// comes every few seconds), in VIDAS, and start over after each match. Left idle for 30 s, the title plays the
+// opening.
 const ATTRACT_LEVELS = [3, 5];
-const ATTRACT_RULES = 'vidas';
-const ATTRACT_SPAR = { aggression: 1, guard: 0, pace: 1, stroke: 90 };
-// [y offset, size] of PAPAGAYO, KOMBAT and the subtitle.
-const LOGO_LINES = [[-44, 4], [20, 5], [76, 2]];
-const RULE_NAMES = ['TIEMPO', 'VIDAS'];
 const ATTRACT_LOOKS = ATTRACT_LEVELS.map((level) => RIVAL_LOOKS[level]);
 
 const SINE_EASE = 'Sine.easeInOut';
@@ -2623,17 +2423,18 @@ const SINE_EASE = 'Sine.easeInOut';
 /** The PAPAGAYO KOMBAT logo, 90s fighting-game style: chunky letters with hard drop shadows, KOMBAT burning
  * gold to red, over GUERRA EN EL CIELO DE CARACAS; it sways like a kite. */
 const logo = (scene) => {
-  const parts = ['PAPAGAYO', 'KOMBAT', 'GUERRA EN EL CIELO DE CARACAS'].flatMap((text, i) => {
-    const [y, size] = LOGO_LINES[i];
-    const offset = i < 2 ? LOGO_SHADOW : PIXEL;
+  // [text, y offset, size] of PAPAGAYO, KOMBAT and the subtitle; the big lines cast deeper shadows.
+  const lines = [['PAPAGAYO', -44, 4], ['KOMBAT', 20, 5], ['GUERRA EN EL CIELO DE CARACAS', 76, 2]];
+  const parts = lines.flatMap(([text, y, size], i) => {
+    const offset = i < 2 ? PIXEL * 3 : PIXEL;
     const shadow = txt(scene, offset, y + offset, text, size, INK);
     const face = txt(scene, 0, y, text, size);
     if (i === 1) face.setTint(GOLD, GOLD, LOGO_KOMBAT, LOGO_KOMBAT);
     else shine(face, i ? GOLD : 0xff7a2f);
     return [shadow, face];
   });
-  const container = scene.add.container(W / 2, LOGO_Y, parts);
-  pulse(scene, container, { rotation: { from: -LOGO_SWAY, to: LOGO_SWAY } }, LOGO_SWAY_MS, SINE_EASE);
+  const container = scene.add.container(W / 2, 84, parts);
+  pulse(scene, container, { rotation: { from: -0.03, to: 0.03 } }, 1800, SINE_EASE);
   return container;
 };
 
@@ -2650,10 +2451,10 @@ const Title = keyed('Title', {
     this.view = new View(this, null, ATTRACT_LOOKS);
     this.startDemo();
     logo(this);
-    panel(this, TITLE_BACKING_X, TITLE_BACKING_Y, TITLE_BACKING_WIDTH, TITLE_BACKING_HEIGHT);
+    panel(this, 200, 214, 400, 120);
     // First how many players, then the match rules.
-    this.menu = new Menu(this, W / 2, TITLE_MENU_Y, ['1 JUGADOR', '2 JUGADORES'], (players) =>
-      this.menu.ask(RULE_NAMES, (rule) => this.scene.start('HowTo', { mode: players ? 'versus' : 'solo', rules: RULES[rule] })),
+    this.menu = new Menu(this, W / 2, 250, ['1 JUGADOR', '2 JUGADORES'], (players) =>
+      this.menu.ask(['TIEMPO', 'VIDAS'], (rule) => this.scene.start('HowTo', { mode: players ? 'versus' : 'solo', rules: rule ? 'vidas' : 'tiempo' })),
     );
     const show = board(this);
     Leaderboard.load().then((entries) => this.sys.isActive() && show(entries));
@@ -2662,9 +2463,10 @@ const Title = keyed('Title', {
 
   startDemo() {
     this.view.flyers.forEach((flyer) => flyer.cheer(null, 0));
-    const pilots = ATTRACT_LEVELS.map((level, player) => new Cpu(level, player, ATTRACT_SPAR));
-    this.demo = new Loop(newDuel(prng(Date.now()), ATTRACT_RULES), pilots, this.view, ({ type }) => {
-      if (type === 'over') this.time.delayedCall(ATTRACT_RESTART_MS, () => this.startDemo());
+    const spar = { aggression: 1, guard: 0, pace: 1, stroke: 90 };
+    const pilots = ATTRACT_LEVELS.map((level, player) => new Cpu(level, player, spar));
+    this.demo = new Loop(newDuel(prng(Date.now()), 'vidas'), pilots, this.view, ({ type }) => {
+      if (type === 'over') this.time.delayedCall(2500, () => this.startDemo());
     });
   },
 
@@ -2673,7 +2475,7 @@ const Title = keyed('Title', {
     const presses = Arcade.drain();
     presses.forEach((code) => this.menu.handle(code));
     this.idle = presses.length ? 0 : this.idle + delta;
-    if (this.idle > ATTRACT_IDLE_MS) this.scene.start('Opening');
+    if (this.idle > 30000) this.scene.start('Opening');
   },
 });
 
@@ -2714,7 +2516,7 @@ const Opening = keyed('Opening', {
     const pull = OPENING_PULL * 1000;
     this.cameras.main
       .setZoom(1)
-      .centerOn(SUN_X + 80, SUN_Y)
+      .centerOn(230, 250)
       .fadeIn(OPENING_FADE_MS)
       .pan(W / 2, H / 2, pull, SINE_EASE)
       .zoomTo(1 / PIXEL, pull, SINE_EASE);
@@ -2774,7 +2576,7 @@ const Opening = keyed('Opening', {
       ease: 'Quad.easeIn',
       onComplete: () => {
         this.cameras.main.shake(SHOT_SHAKE_MS, SHOT_SHAKE * 2);
-        this.view.fx.sparks(OPENING_SLAM_SPARKS, W / 2, LOGO_Y);
+        this.view.fx.sparks(OPENING_SLAM_SPARKS, W / 2, 84);
         sfx.play('thud');
         sfx.play('jingle');
       },
@@ -2805,13 +2607,11 @@ class Screen extends Phaser.Scene {
   }
 }
 
-const HOWTO_COLUMNS = [210, 590];
 // Keyboard keys for web players, per player: joystick, B1, B2.
 const KEY_HINTS = [
   ['WASD', 'U', 'I'],
   ['FLECHAS', 'R', 'T'],
 ];
-const CONTROLS = ['JOYSTICK: DIRIGIR', 'B1: JALAR (MANTÉN PARA SUBIR)', 'B2: RECOGER'];
 // What each power box does, in one word (in POWERS order).
 const POWER_WORDS = ['CORTA', 'RÁPIDO', 'ESCUDO', 'ATACA'];
 
@@ -2819,22 +2619,22 @@ const POWER_WORDS = ['CORTA', 'RÁPIDO', 'ESCUDO', 'ATACA'];
 const drawControls = (scene, g, x, y, player) => {
   const color = PLAYER_COLORS[player];
   const [stickKeys, ...buttonKeys] = KEY_HINTS[player];
-  const sx = x + JOYSTICK_X;
-  const [base, ball] = [y + JOYSTICK_BASE, y + JOYSTICK_BALL];
-  rect(g, PANEL_PLATE, x - PANEL_WIDTH / 2, y + PANEL_TOP, PANEL_WIDTH, PANEL_HEIGHT);
-  g.fillStyle(INK).fillCircle(sx, base, JOYSTICK_BASE_R).fillStyle(PANEL_PLATE).fillCircle(sx, base, JOYSTICK_BASE_R - 6);
-  rect(g, INK, sx - JOYSTICK_SHAFT, ball, JOYSTICK_SHAFT * 2, base - ball);
-  g.fillStyle(INK).fillCircle(sx, ball, JOYSTICK_BALL_R + 2).fillStyle(PANEL_CAP).fillCircle(sx, ball, JOYSTICK_BALL_R - 2);
-  txt(scene, sx, y + PANEL_HINT, stickKeys, 1, color);
+  const sx = x - 95;
+  const [base, ball] = [y + 40, y + 4];
+  rect(g, PANEL_PLATE, x - 150, y - 60, 300, 160);
+  g.fillStyle(INK).fillCircle(sx, base, 30).fillStyle(PANEL_PLATE).fillCircle(sx, base, 24);
+  rect(g, INK, sx - 4, ball, 8, base - ball);
+  g.fillStyle(INK).fillCircle(sx, ball, 17).fillStyle(PANEL_CAP).fillCircle(sx, ball, 13);
+  txt(scene, sx, y - 42, stickKeys, 1, color);
   for (let i = 0; i < 6; i += 1) {
-    const bx = x + BUTTONS_X + (i % 3) * BUTTONS_GAP;
-    const by = y + floor(i / 3) * BUTTONS_ROW;
-    const alpha = i < 3 ? 1 : BUTTONS_UNUSED_ALPHA;
-    if (i < BUTTONS_USED) {
-      g.lineStyle(4, color).strokeCircle(bx, by, BUTTONS_RADIUS + BUTTONS_RING);
-      txt(scene, bx, by + PANEL_HINT, buttonKeys[i], 1, color);
+    const bx = x - 15 + (i % 3) * 58;
+    const by = y + floor(i / 3) * 58;
+    const alpha = i < 3 ? 1 : 0.4;
+    if (i < 2) {
+      g.lineStyle(4, color).strokeCircle(bx, by, 26);
+      txt(scene, bx, by - 42, buttonKeys[i], 1, color);
     }
-    g.fillStyle(INK, alpha).fillCircle(bx, by, BUTTONS_RADIUS + 2).fillStyle(PANEL_CAP, alpha).fillCircle(bx, by, BUTTONS_RADIUS);
+    g.fillStyle(INK, alpha).fillCircle(bx, by, 22).fillStyle(PANEL_CAP, alpha).fillCircle(bx, by, 20);
     txt(scene, bx, by, String(i + 1), 1, INK).setAlpha(alpha);
   }
 };
@@ -2848,38 +2648,38 @@ const HowTo = keyed('HowTo', {
     const { mode } = this.setup;
     const players = isSolo(mode) ? [0] : [0, 1];
     this.stage(lineup(mode, 0, DEFAULT_CHOICES));
-    panel(this, HOWTO_MARGIN, HOWTO_TOP, W - 2 * HOWTO_MARGIN, HOWTO_HEIGHT);
-    shine(mid(this, SCREEN_HEADING, 'CÓMO JUGAR', 3), GOLD);
+    panel(this, 30, 80, W - 60, 482);
+    shine(mid(this, 46, 'CÓMO JUGAR', 3), GOLD);
     const g = this.add.graphics();
     players.forEach((player) => {
-      const x = players.length > 1 ? HOWTO_COLUMNS[player] : W / 2;
-      txt(this, x, HOWTO_CABINET_Y - 80, `JUGADOR ${player + 1}`, 1, PLAYER_COLORS[player]);
-      drawControls(this, g, x, HOWTO_CABINET_Y, player);
+      // In versus the two cabinets sit side by side.
+      const x = players.length > 1 ? [210, 590][player] : W / 2;
+      txt(this, x, 100, `JUGADOR ${player + 1}`, 1, PLAYER_COLORS[player]);
+      drawControls(this, g, x, 180, player);
     });
-    CONTROLS.forEach((text, i) => mid(this, HOWTO_LEGEND_Y + i * HOWTO_LINE_GAP, text, 2));
-    mid(this, HOWTO_GOAL_Y, 'SERRUCHA EL HILO RIVAL CON TU COLA', 1, GOLD);
+    ['JOYSTICK: DIRIGIR', 'B1: JALAR (MANTÉN PARA SUBIR)', 'B2: RECOGER'].forEach((text, i) => mid(this, 312 + i * 42, text, 2));
+    mid(this, 432, 'SERRUCHA EL HILO RIVAL CON TU COLA', 1, GOLD);
     POWERS.forEach((kind, i) => {
-      const x = W / 2 + (i - 1.5) * HOWTO_POWER_GAP;
-      crate(g, { x, y: HOWTO_POWERS_Y, kind }, 0);
-      txt(this, x, HOWTO_POWERS_Y + 36, kind.toUpperCase(), 1, GLASS);
-      txt(this, x, HOWTO_POWERS_Y + 56, POWER_WORDS[i]);
+      const x = W / 2 + (i - 1.5) * 170;
+      crate(g, { x, y: 470, kind }, 0);
+      txt(this, x, 506, kind.toUpperCase(), 1, GLASS);
+      txt(this, x, 526, POWER_WORDS[i]);
     });
     mid(this, SCREEN_FOOTER, 'B1 / START: ¡VAMOS!');
   },
 
   step(presses, delta) {
     this.elapsed += delta;
-    if (this.ends(presses, HOWTO_MS)) this.scene.start('Build', this.setup);
+    if (this.ends(presses, 8000)) this.scene.start('Build', this.setup);
   },
 }, Screen);
 
-const BUILD_COLUMNS = [200, 600];
 const ROW_TITLES = ['CHAMO / CHAMA', 'PEINADO', 'PIEL', 'FRANELA', 'PAPAGAYO'];
 
 /** Text for a row's value: names for body and hair, a counter for colours and kites (the preview shows them). */
 const rowValue = (choice, row) => {
   if (row === 'body') return BODY_NAMES[choice.body];
-  if (row === 'hair') return HAIR_NAMES[choice.hair];
+  if (row === 'hair') return ['CORTO', 'GORRA', 'COLA', 'MOÑO'][choice.hair];
   return `${choice[row] + 1} / ${ROW_SIZES[row]}`;
 };
 
@@ -2907,8 +2707,8 @@ const Build = keyed('Build', {
     this.choices = choicesOf(null);
     this.players = isSolo(this.mode) ? [0] : [0, 1];
     this.stage(lineup(this.mode, 0, this.choices));
-    shine(mid(this, SCREEN_HEADING, 'ARMA TU PAPAGAYERO', 3), GOLD);
-    this.columns = this.players.map((player) => this.addColumn(player, this.players.length === 1 ? W / 2 : BUILD_COLUMNS[player]));
+    shine(mid(this, 46, 'ARMA TU PAPAGAYERO', 3), GOLD);
+    this.columns = this.players.map((player) => this.addColumn(player, this.players.length === 1 ? W / 2 : [200, 600][player]));
     this.g = this.add.graphics();
     mid(this, SCREEN_FOOTER, 'JOYSTICK: ELEGIR · B1: ¡LISTO!');
     AvatarStore.load().then((stored) => {
@@ -2920,16 +2720,16 @@ const Build = keyed('Build', {
   },
 
   addColumn(player, x) {
-    const half = BUILD_WIDTH / 2;
-    panel(this, x - half, BUILD_TOP, BUILD_WIDTH, BUILD_HEIGHT);
-    txt(this, x, BUILD_TOP + 26, `JUGADOR ${player + 1}`, 1, PLAYER_COLORS[player]);
+    // The column panel spans y 92-478.
+    panel(this, x - 186, 92, 372, 386);
+    txt(this, x, 118, `JUGADOR ${player + 1}`, 1, PLAYER_COLORS[player]);
     const rowX = x + 86;
     const values = LOOK_ROWS.map((row, i) => {
-      const y = BUILD_ROWS_Y + i * BUILD_ROW_GAP;
+      const y = 150 + i * 52;
       txt(this, rowX, y, ROW_TITLES[i], 1, DIM);
       return txt(this, rowX, y + 22, '');
     });
-    const status = txt(this, x, BUILD_TOP + BUILD_HEIGHT - 28, '', 2);
+    const status = txt(this, x, 450, '', 2);
     return { x, rowX, values, status, row: 0, ready: false };
   },
 
@@ -2941,7 +2741,7 @@ const Build = keyed('Build', {
       const selected = i === column.row && !column.ready;
       value.setText(selected ? `‹ ${text} ›` : text).setTint(selected ? GOLD : CREAM);
     });
-    column.status.setText(column.ready ? '¡LISTO!' : 'B1: ¡LISTO!').setTint(column.ready ? BUILD_READY : DIM);
+    column.status.setText(column.ready ? '¡LISTO!' : 'B1: ¡LISTO!').setTint(column.ready ? 0x7dff8a : DIM);
     this.scenery.flyers[player].look = lookOf(choice, player);
   },
 
@@ -2962,7 +2762,7 @@ const Build = keyed('Build', {
     this.leaving = true;
     const { choices, mode, rules } = this;
     AvatarStore.save(choices);
-    this.time.delayedCall(BUILD_LEAVE_MS, () =>
+    this.time.delayedCall(700, () =>
       this.scene.start(isSolo(mode) ? 'Intro' : 'Duel', { mode, rules, level: 0, total: 0, choices }),
     );
   },
@@ -2971,7 +2771,7 @@ const Build = keyed('Build', {
     this.clock += delta / 1000;
     if (this.leaving) return;
     presses.forEach((code) => this.players.forEach((player) => this.handle(player, code)));
-    if (this.idle > BUILD_IDLE_MS) this.players.forEach((player) => this.handle(player, PLAYER_CODES[player].start));
+    if (this.idle > 30000) this.players.forEach((player) => this.handle(player, PLAYER_CODES[player].start));
     this.draw();
     if (this.columns.every((column) => column.ready)) this.finish();
   },
@@ -2983,8 +2783,8 @@ const Build = keyed('Build', {
       const side = player ? -1 : 1;
       const x = column.x - 96;
       const mood = column.ready ? 'win' : null;
-      const pose = { x, y: BUILD_TOP + BUILD_HEIGHT - 46, scale: BUILD_PREVIEW, side, mood, clock: this.clock };
-      portrait(g, look, pose, { x: x + side * 40, y: BUILD_TOP + 78 });
+      const pose = { x, y: 432, scale: 2.1, side, mood, clock: this.clock };
+      portrait(g, look, pose, { x: x + side * 40, y: 170 });
     });
   },
 }, Screen);
@@ -3027,11 +2827,12 @@ const Intro = keyed('Intro', {
     this.cast = lineup('solo', this.level, this.choices);
     this.stage(this.cast);
     const { name, home, motto } = RIVALS[this.level];
-    const text = (dy, value, size, color) => txt(this, CARD_TEXT_X, CARD_TOP + dy, value, size, color);
-    panel(this, CARD_LEFT, CARD_TOP, CARD_WIDTH, CARD_HEIGHT);
+    const text = (dy, value, size, color) => txt(this, 480, 150 + dy, value, size, color);
+    panel(this, 100, 150, 600, 280);
     this.portrait = this.add.graphics();
     text(38, `RIVAL ${this.level + 1} DE ${RIVALS.length}`, 2, GOLD);
-    text(96, name, name.length > CARD_LONG_NAME ? 2 : 3, PLAYER_COLORS[1]);
+    // Names longer than 10 letters drop to a smaller size to fit beside the portrait.
+    text(96, name, name.length > 10 ? 2 : 3, PLAYER_COLORS[1]);
     text(146, `DE ${home}`, 1);
     text(184, motto, 1, GOLD);
     text(240, `PUNTOS ${this.total}`);
@@ -3041,11 +2842,12 @@ const Intro = keyed('Intro', {
     this.elapsed += delta;
     const clock = this.elapsed / 1000;
     const g = this.portrait.clear();
-    drawHome(g, this.level, CARD_LEFT + 8, CARD_BOTTOM - 8, CARD_LAND);
+    // The card spans x 100-700, y 150-430.
+    drawHome(g, this.level, 108, 422, 230);
     // The rival looks up at its kite in the card's corner, away from the text.
-    const pose = { x: CARD_LEFT + 140, y: CARD_BOTTOM - 16, scale: 1.9, side: -1, mood: null, clock };
-    portrait(g, this.cast[1].look, pose, { x: CARD_LEFT + 48, y: CARD_TOP + 56 });
-    if (!this.ends(presses, INTRO_MS)) return;
+    const pose = { x: 240, y: 414, scale: 1.9, side: -1, mood: null, clock };
+    portrait(g, this.cast[1].look, pose, { x: 148, y: 206 });
+    if (!this.ends(presses, 3200)) return;
     const { level, total, rules, choices } = this;
     this.scene.start('Duel', { mode: 'solo', level, total, rules, choices });
   },
@@ -3072,7 +2874,7 @@ const Duel = keyed('Duel', {
     if (event.type === 'point' && isSolo(this.mode)) this.earned += pointScore(event);
     // The band speeds up for the last seconds and the sudden death.
     if (event.type === 'double' || event.type === 'sudden') sfx.music('hot');
-    if (event.type === 'over') this.time.delayedCall(RESULT_DELAY_MS, () => this.finish());
+    if (event.type === 'over') this.time.delayedCall(1200, () => this.finish());
   },
 
   update(time, delta) {
@@ -3088,7 +2890,6 @@ const Duel = keyed('Duel', {
   },
 });
 
-const OUTCOME_TITLES = { next: '¡GANASTE!', champion: '¡REY DEL CIELO!', defeat: '¡TE GANARON!' };
 const STAT_ROWS = [
   ['CORTES', 'cuts'],
   ['CHOQUES', 'crashes'],
@@ -3109,24 +2910,24 @@ const Result = keyed('Result', {
     const { mode, level, winner, total, earned, choices = DEFAULT_CHOICES } = this.summary;
     this.outcome = isSolo(mode) ? ladderOutcome(winner, level) : 'versus';
     this.stage(lineup(mode, level, choices), [0, 1].map((player) => (player === winner ? 'win' : 'lose')));
-    shine(mid(this, RESULT_TITLE, this.title(), 3), PLAYER_COLORS[winner]);
-    mid(this, RESULT_SUBTITLE, this.subtitle(), 1, GOLD);
+    shine(mid(this, 70, this.title(), 3), PLAYER_COLORS[winner]);
+    mid(this, 116, this.subtitle(), 1, GOLD);
     this.addStats();
     if (mode === 'versus') {
       this.state = 'menu';
-      this.menu = new Menu(this, W / 2, RESULT_MENU, ['REVANCHA', 'MENÚ PRINCIPAL'], (index) =>
+      this.menu = new Menu(this, W / 2, 360, ['REVANCHA', 'MENÚ PRINCIPAL'], (index) =>
         index === 0 ? this.leave('Duel', this.summary) : this.leave('Title'),
       );
       return;
     }
-    mid(this, RESULT_TOTAL, `TOTAL ${total}  (+${earned})`, 2);
+    mid(this, 334, `TOTAL ${total}  (+${earned})`, 2);
     if (this.outcome === 'next') this.prompt('PULSA START PARA SEGUIR', 'next');
     else Leaderboard.load().then((entries) => (Leaderboard.qualifies(entries, total) ? this.askInitials() : this.showBoard(entries)));
   },
 
   title() {
     const { winner, names } = this.summary;
-    return this.outcome === 'versus' ? `¡GANÓ ${names[winner]}!` : OUTCOME_TITLES[this.outcome];
+    return this.outcome === 'versus' ? `¡GANÓ ${names[winner]}!` : { next: '¡GANASTE!', champion: '¡REY DEL CIELO!', defeat: '¡TE GANARON!' }[this.outcome];
   },
 
   subtitle() {
@@ -3142,10 +2943,10 @@ const Result = keyed('Result', {
   addStats() {
     const { names, stats, score } = this.summary;
     const rows = [...STAT_ROWS.map(([title, key]) => [title, stats.map((player) => player[key])]), ['PUNTOS', score]];
-    panel(this, (W - RESULT_STATS_WIDTH) / 2, RESULT_STATS - 12, RESULT_STATS_WIDTH, 140);
-    STAT_COLUMNS.forEach((x, player) => txt(this, x, RESULT_STATS + 8, names[player], 1, PLAYER_COLORS[player]));
+    panel(this, (W - 420) / 2, 154, 420, 140);
+    STAT_COLUMNS.forEach((x, player) => txt(this, x, 174, names[player], 1, PLAYER_COLORS[player]));
     rows.forEach(([title, values], i) => {
-      const y = RESULT_STATS + 36 + i * RESULT_STAT_ROW;
+      const y = 202 + i * 22;
       mid(this, y, title, 1, DIM);
       STAT_COLUMNS.forEach((x, player) => txt(this, x, y, String(values[player])));
     });
@@ -3153,7 +2954,7 @@ const Result = keyed('Result', {
 
   prompt(text, state) {
     this.state = state;
-    const prompt = mid(this, RESULT_PROMPT, text);
+    const prompt = mid(this, 386, text);
     pulse(this, prompt, { alpha: 0.3 }, 500);
   },
 
@@ -3162,11 +2963,11 @@ const Result = keyed('Result', {
     if (!this.sys.isActive()) return;
     this.state = 'initials';
     this.idle = 0;
-    this.slots = this.letters.map((letter, i) => txt(this, W / 2 + (i - 1) * INITIALS_GAP, INITIALS_Y, letter, 4));
-    this.caret = this.add.rectangle(0, INITIALS_Y + 40, 44, 8, GOLD);
+    this.slots = this.letters.map((letter, i) => txt(this, W / 2 + (i - 1) * 64, 420, letter, 4));
+    this.caret = this.add.rectangle(0, 460, 44, 8, GOLD);
     this.help = [
-      mid(this, RESULT_RECORD, '¡NUEVO RÉCORD! ESCRIBE TUS INICIALES', 1, PLAYER_COLORS[0]),
-      mid(this, RESULT_HELP, 'JOYSTICK: LETRA · B1: SIGUIENTE'),
+      mid(this, 372, '¡NUEVO RÉCORD! ESCRIBE TUS INICIALES', 1, PLAYER_COLORS[0]),
+      mid(this, 486, 'JOYSTICK: LETRA · B1: SIGUIENTE'),
     ];
     this.refresh();
   },
@@ -3194,13 +2995,13 @@ const Result = keyed('Result', {
     const { state } = this;
     if (state === 'initials') {
       presses.forEach((code) => this.write(code));
-      if (this.idle > INITIALS_IDLE_MS) this.submit();
+      if (this.idle > 30000) this.submit();
       return;
     }
     if (state === 'menu') presses.forEach((code) => this.menu.handle(code));
     else if ((state === 'next' || state === 'board') && presses.some(isOk)) this.proceed();
     // Walking away abandons the ladder or the rematch.
-    if (this.state !== 'gone' && this.idle > RESULT_IDLE_MS) this.leave('Title');
+    if (this.state !== 'gone' && this.idle > 25000) this.leave('Title');
   },
 
   write(code) {
@@ -3208,7 +3009,7 @@ const Result = keyed('Result', {
     const step = (codes) => (codes.includes(code) ? 1 : 0);
     const turn = step(MENU_CODES_UP) - step(MENU_CODES_DOWN);
     if (turn) this.letters[this.cursor] = shiftLetter(this.letters[this.cursor], turn);
-    this.cursor = min(INITIALS_LENGTH - 1, max(0, this.cursor + step(MENU_CODES_RIGHT) - step(MENU_CODES_LEFT)));
+    this.cursor = min(INITIALS_LENGTH - 1, max(0, this.cursor + step(['P1_R', 'P2_R']) - step(['P1_L', 'P2_L'])));
     if (isOk(code)) {
       if (this.cursor < INITIALS_LENGTH - 1) this.cursor += 1;
       else this.submit();
